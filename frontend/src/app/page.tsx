@@ -151,18 +151,17 @@ export default function Home() {
         }
       });
 
-      // Timeout safety
+      // Timeout safety - Just show a warning, DO NOT unsubscribe
       setTimeout(() => {
-        // Only show timeout if still loading
         setLoading((currentLoading) => {
           if (currentLoading) {
-            setMessage('⚠️ 응답이 지연되고 있습니다. 잠시만 더 기다려주세요...');
-            // Don't unsubscribe yet, give it more time or let user cancel
-            return true; 
+            setMessage('⚠️ 응답이 지연되고 있습니다... (계속 대기 중)');
           }
-          return false;
+          return currentLoading;
         });
-      }, 20000); // 20 seconds
+        // We do NOT call unsubscribe() here anymore.
+        // The listener will stay active until component unmounts or success.
+      }, 15000); // Warn after 15s
 
     } catch (e) {
       setMessage('⚠️ 요청 실패');
