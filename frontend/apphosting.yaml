@@ -1,0 +1,12 @@
+kind: "AppHostingConfig"
+schemaVersion: "v1"
+
+environmentVariables:
+  - variable: "NEXT_PUBLIC_FIREBASE_API_KEY"
+    value: "AIzaSyB8SSArVgaVy9ZzH69F3XbpkLxTsmWpEy4"
+  - variable: "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
+    value: "korail-bot.firebaseapp.com"
+  - variable: "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
+    value: "344770547705"
+  - variable: "NEXT_PUBLIC_FIREBASE_APP_ID"
+    value: "1:344770547705:web:57aabbf291e28c370b7728"
