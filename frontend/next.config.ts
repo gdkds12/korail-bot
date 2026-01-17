@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
+import withPWA from "@ducanh2912/next-pwa";
 
-const nextConfig: NextConfig = {
+const config: NextConfig = {
   // Cloud Run/Firebase App Hosting을 위한 필수 설정
   output: "standalone",
   
@@ -20,5 +21,16 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_FIREBASE_APP_ID: "1:344770547705:web:57aabbf291e28c370b7728",
   },
 };
+
+const nextConfig = withPWA({
+  dest: "public",
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  disable: false, // Enable PWA in development too for testing
+  workboxOptions: {
+    disableDevLogs: true,
+  },
+})(config);
 
 export default nextConfig;
