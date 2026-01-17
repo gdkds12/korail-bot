@@ -12,6 +12,9 @@ const config: NextConfig = {
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "344770547705",
     NEXT_PUBLIC_FIREBASE_APP_ID: "1:344770547705:web:57aabbf291e28c370b7728",
   },
+  images: {
+    unoptimized: true,
+  },
 };
 
 const nextConfig = withPWA({
