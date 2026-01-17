@@ -1,6 +1,5 @@
 import firebase_admin
-from firebase_admin import credentials, firestore
-from korail2 import Korail
+from firebase_admin import credentials, firestore, messaging
 import threading
 import time
 import requests
@@ -25,6 +24,22 @@ active_tasks: Dict[str, Any] = {}
 
 def log(msg):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+
+def send_fcm_notification(token, title, body):
+    if not token:
+        return
+    try:
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            token=token,
+        )
+        response = messaging.send(message)
+        log(f"FCM notification sent: {response}")
+    except Exception as e:
+        log(f"FCM error: {e}")
 
 def send_telegram_msg(token, chat_id, message):
     if not token or not chat_id:
@@ -168,6 +183,12 @@ def run_reservation_task(task_id, task_data, stop_event):
                 
                 msg = f"🎉 예약 성공!\n열차: {task_data.get('train_name')}\n구간: {task_data.get('dep_name')} -> {task_data.get('arr_name')}"
                 send_telegram_msg(tg_token, tg_chat_id, msg)
+                
+                # Send FCM Notification
+                fcm_token = user_data.get('fcmToken')
+                if fcm_token:
+                    send_fcm_notification(fcm_token, "🚂 코레일 예약 성공!", msg)
+                
                 break
                 
         except Exception as e:

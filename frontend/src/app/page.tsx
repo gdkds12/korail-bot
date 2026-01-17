@@ -62,6 +62,7 @@ export default function Home() {
           setKorailPw(data.korailPw || '');
           setTgToken(data.tgToken || '');
           setTgChatId(data.tgChatId || '');
+          setFcmToken(data.fcmToken || '');
         }
 
         // Realtime Tasks Listener
@@ -106,11 +107,22 @@ export default function Home() {
         korailId,
         korailPw,
         tgToken,
-        tgChatId
+        tgChatId,
+        fcmToken // Include FCM token
       }, { merge: true });
       setMessage('✅ 설정이 저장되었습니다.');
     } catch (e) {
       setMessage('⚠️ 저장 실패');
+    }
+  };
+
+  const handleEnablePush = async () => {
+    const token = await requestFcmToken(VAPID_KEY);
+    if (token) {
+      setFcmToken(token);
+      setMessage('🔔 푸시 알림이 활성화되었습니다! 설정을 저장해주세요.');
+    } else {
+      setMessage('❌ 푸시 권한을 허용해야 합니다.');
     }
   };
 
@@ -394,6 +406,15 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                <div className="pt-6 border-t border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">앱 알림 (PWA)</h3>
+                  <button type="button" onClick={handleEnablePush} className={`w-full py-4 font-bold rounded-2xl transition-all border-2 ${fcmToken ? 'bg-green-50 border-green-200 text-green-600' : 'bg-blue-50 border-blue-200 text-blue-600'}`}>
+                    {fcmToken ? '✅ 푸시 알림 활성화됨' : '🔔 앱 푸시 권한 요청'}
+                  </button>
+                  <p className="mt-2 text-[10px] text-gray-400 text-center">브라우저 알림 권한 팝업이 뜨면 "허용"을 눌러주세요.</p>
+                </div>
+
                 <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg mt-4">
                   설정 저장
                 </button>
