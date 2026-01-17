@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { auth, db, googleProvider } from '../lib/firebase';
+import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 
 const MAJOR_STATIONS = [
   '서울', '용산', '광명', '천안아산', '오송', '대전', '김천구미', '동대구', '신경주', '울산', '부산',
@@ -8,144 +11,214 @@ const MAJOR_STATIONS = [
 ].sort();
 
 export default function Home() {
-  const [userId, setUserId] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  
+  // Korail Credentials (stored in Firestore)
+  const [korailId, setKorailId] = useState('');
+  const [korailPw, setKorailPw] = useState('');
+  
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('search'); // 'search' | 'manage' | 'settings'
+  const [activeTab, setActiveTab] = useState('search');
   
-  // Telegram settings state
+  // Telegram settings
   const [tgToken, setTgToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
 
+  // Search params
   const [dep, setDep] = useState('서울');
   const [arr, setArr] = useState('부산');
-  const [displayDate, setDisplayDate] = useState(''); // 이 줄이 누락되었습니다.
+  const [displayDate, setDisplayDate] = useState('');
   const [time, setTime] = useState('06');
   const [interval, setInterval] = useState(3.0);
   const [trains, setTrains] = useState<any[]>([]);
   
-  // Dashboard state
+  // Tasks from Firestore
   const [tasks, setTasks] = useState<any>({});
 
-
+  // Auth & Initial Data Loading
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setDisplayDate(today);
-    
-    const fetchTasks = async () => {
-      try {
-        const res = await fetch(`${getBackendUrl()}/tasks`);
-        const data = await res.json();
-        setTasks(data);
-      } catch (e) {}
-    };
 
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch(`${getBackendUrl()}/health`); // 임시로 health 사용하거나 새로 만들 수 있음
-        // 하지만 여기서는 그냥 초기 상태에서 봇 정보를 보여주기 위해 
-        // 하드코딩된 값 대신 백엔드에서 가져오도록 설계를 나중에 보강할 수 있습니다.
-      } catch (e) {}
-    };
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        // Load User Settings (Korail ID, Telegram)
+        const userRef = doc(db, 'users', u.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          setKorailId(data.korailId || '');
+          setKorailPw(data.korailPw || '');
+          setTgToken(data.tgToken || '');
+          setTgChatId(data.tgChatId || '');
+        }
 
-    const timer = window.setInterval(fetchTasks, 1000);
-    return () => window.clearInterval(timer);
+        // Realtime Tasks Listener
+        const q = query(collection(db, 'tasks'), where('uid', '==', u.uid));
+        const unsubscribeTasks = onSnapshot(q, (snapshot) => {
+          const newTasks: any = {};
+          snapshot.forEach((doc) => {
+            newTasks[doc.id] = { id: doc.id, ...doc.data() };
+          });
+          setTasks(newTasks);
+        });
+        return () => unsubscribeTasks();
+      } else {
+        setTasks({});
+      }
+    });
+
+    return () => unsubscribeAuth();
   }, []);
 
-  const getBackendUrl = () => {
-    return `${window.location.protocol}//${window.location.hostname}:8001`;
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const handleLogin = async () => {
     try {
-      const response = await fetch(`${getBackendUrl()}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, password }),
-      });
-      if (response.ok) {
-        setIsLoggedIn(true);
-        setMessage('✅ 로그인 성공');
-      } else {
-        const data = await response.json();
-        setMessage(`❌ 오류: ${data.detail}`);
-      }
-    } catch (e) { setMessage('⚠️ 연결 실패'); }
-    setLoading(false);
+      await signInWithPopup(auth, googleProvider);
+      setMessage('✅ 로그인 성공');
+    } catch (e) {
+      setMessage('❌ 로그인 실패');
+    }
   };
 
+  const handleLogout = async () => {
+    await signOut(auth);
+    setMessage('👋 로그아웃');
+  };
+
+  const saveSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        korailId,
+        korailPw,
+        tgToken,
+        tgChatId
+      }, { merge: true });
+      setMessage('✅ 설정이 저장되었습니다.');
+    } catch (e) {
+      setMessage('⚠️ 저장 실패');
+    }
+  };
+
+  // Note: Search still needs a backend API because we can't run Korail Python lib in browser.
+  // For now, we will simulate or assume the backend provides a Search API via a different mechanism
+  // OR we can implement a "Search Request" via Firestore? 
+  // --> Let's keep using fetch() for SEARCH but point to the Python backend which is now just a worker?
+  // No, the Python backend on Linux server can expose a simple HTTP endpoint just for Search.
+  // We will assume the backend is still running a lightweight HTTP server for Search ONLY.
+  // Let's keep the fetch logic but user needs to know the IP. 
+  // *Critique*: If we move to App Hosting, we can't easily hit a random IP.
+  // *Better Idea*: Use a "search_requests" collection in Firestore.
+  // 1. User adds doc to 'search_requests'.
+  // 2. Backend watches it, performs search, writes results back to doc.
+  // 3. Frontend watches doc for results.
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     setLoading(true);
+    setTrains([]);
+    setMessage('⏳ 조회 요청 중...');
+
     try {
-      const response = await fetch(`${getBackendUrl()}/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dep, arr, date: displayDate.replace(/-/g, ''), time: time.padStart(2, '0') + '0000' }),
+      // Create a temporary search request
+      const reqRef = await addDoc(collection(db, 'search_requests'), {
+        uid: user.uid,
+        dep,
+        arr,
+        date: displayDate.replace(/-/g, ''),
+        time: time.padStart(2, '0') + '0000',
+        createdAt: new Date(),
+        status: 'PENDING'
       });
-      const data = await response.json();
-      setTrains(data.trains || []);
-      setMessage(data.message || `📅 ${data.trains?.length || 0}개 열차 조회됨`);
-    } catch (e) { setMessage('⚠️ 연결 실패'); }
-    setLoading(false);
+
+      // Wait for result (One-time listener)
+      const unsubscribe = onSnapshot(doc(db, 'search_requests', reqRef.id), (docSnap) => {
+        const data = docSnap.data();
+        if (data && data.status === 'COMPLETED') {
+          setTrains(data.results || []);
+          setMessage(`📅 ${data.results?.length || 0}개 열차 조회됨`);
+          setLoading(false);
+          unsubscribe(); // Stop listening
+        } else if (data && data.status === 'ERROR') {
+          setMessage(`❌ 오류: ${data.error}`);
+          setLoading(false);
+          unsubscribe();
+        }
+      });
+
+      // Timeout safety
+      setTimeout(() => {
+        setLoading(false);
+        setMessage('⚠️ 응답 시간 초과 (백엔드가 실행 중인지 확인하세요)');
+        unsubscribe();
+      }, 10000);
+
+    } catch (e) {
+      setMessage('⚠️ 요청 실패');
+      setLoading(false);
+    }
   };
 
   const handleReserveLoop = async (train: any) => {
+    if (!user) return;
+    if (!korailId || !korailPw) {
+      alert('⚠️ 먼저 설정 탭에서 코레일 계정을 저장해주세요.');
+      setActiveTab('settings');
+      return;
+    }
+    
     try {
-      const response = await fetch(`${getBackendUrl()}/reserve_loop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          train_no: train.train_no,
-          dep_date: train.dep_date,
-          dep_time: train.dep_time,
-          dep_name: train.dep_name,
-          arr_name: train.arr_name,
-          interval: interval,
-          train_name: train.train_name
-        }),
+      await addDoc(collection(db, 'tasks'), {
+        uid: user.uid,
+        train_no: train.train_no,
+        train_name: train.train_name,
+        dep_date: train.dep_date,
+        dep_time: train.dep_time,
+        dep_name: train.dep_name,
+        arr_name: train.arr_name,
+        interval: interval,
+        is_running: true,
+        status: 'RUNNING',
+        attempts: 0,
+        createdAt: new Date(),
+        last_check: '-'
       });
-      if (response.ok) alert('🚀 매크로가 시작되었습니다. 관리 탭에서 확인하세요!');
-    } catch (e) { alert('⚠️ 시작 실패'); }
+      alert('🚀 예약 작업이 추가되었습니다. 관리 탭에서 확인하세요!');
+    } catch (e) {
+      alert('⚠️ 작업 추가 실패');
+    }
   };
 
-  const handleStopTask = async (trainNo: string) => {
-    await fetch(`${getBackendUrl()}/stop_task?train_no=${trainNo}`, { method: 'POST' });
-  };
-
-  const handleClearTasks = async () => {
-    await fetch(`${getBackendUrl()}/clear_tasks`, { method: 'POST' });
-  };
-
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleStopTask = async (taskId: string) => {
     try {
-      const response = await fetch(`${getBackendUrl()}/settings/telegram`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: tgToken, chat_id: tgChatId }),
+      await updateDoc(doc(db, 'tasks', taskId), {
+        is_running: false,
+        status: 'STOPPED'
       });
-      if (response.ok) alert('✅ 설정이 저장되었습니다. 텔레그램 메시지를 확인하세요!');
-    } catch (e) { alert('⚠️ 저장 실패'); }
+    } catch (e) {}
   };
 
-  if (!isLoggedIn) {
+  const handleDeleteTask = async (taskId: string) => {
+     // In a real app, you might want to actually delete the doc
+     // await deleteDoc(doc(db, 'tasks', taskId));
+     // For now, let's just mark it stop (or implement delete later)
+     handleStopTask(taskId);
+  };
+
+  if (!user) {
     return (
       <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white shadow-2xl rounded-3xl p-8 w-full max-w-md border border-gray-100">
-          <h1 className="text-3xl font-black text-blue-900 text-center mb-8">Korail Bot</h1>
-          <form onSubmit={handleLogin} className="space-y-5">
-            <input type="text" value={userId} onChange={e => setUserId(e.target.value)} className="w-full p-4 border rounded-2xl text-black outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="회원번호" />
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-4 border rounded-2xl text-black outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="비밀번호" />
-            <button type="submit" disabled={loading} className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg disabled:bg-gray-300">
-              {loading ? '로그인 중...' : '시작하기'}
-            </button>
-          </form>
-          {message && <p className="mt-4 text-center text-sm font-medium text-red-500">{message}</p>}
+        <div className="bg-white shadow-2xl rounded-3xl p-8 w-full max-w-md border border-gray-100 text-center">
+          <h1 className="text-3xl font-black text-blue-900 mb-8">Korail Bot</h1>
+          <p className="text-gray-500 mb-8">구글 계정으로 로그인하여 시작하세요.</p>
+          <button onClick={handleLogin} className="w-full py-4 bg-white border-2 border-gray-200 text-gray-700 font-bold rounded-2xl hover:bg-gray-50 transition-all flex items-center justify-center gap-3">
+             <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-6 h-6" alt="Google" />
+             Google로 계속하기
+          </button>
+          {message && <p className="mt-4 text-sm font-medium text-red-500">{message}</p>}
         </div>
       </main>
     );
@@ -156,10 +229,10 @@ export default function Home() {
       <nav className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-4xl mx-auto flex">
           <button onClick={() => setActiveTab('search')} className={`flex-1 py-4 font-bold text-sm transition-all ${activeTab === 'search' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400'}`}>
-            🔍 열차 조회
+            🔍 조회
           </button>
           <button onClick={() => setActiveTab('manage')} className={`flex-1 py-4 font-bold text-sm transition-all ${activeTab === 'manage' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400'}`}>
-            ⚡ 매크로 관리 ({Object.values(tasks).filter((t: any) => t.is_running).length})
+            ⚡ 관리 ({Object.values(tasks).filter((t: any) => t.is_running).length})
           </button>
           <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 font-bold text-sm transition-all ${activeTab === 'settings' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400'}`}>
             ⚙️ 설정
@@ -169,7 +242,6 @@ export default function Home() {
 
       <div className="max-w-4xl mx-auto p-4 mt-6">
         {activeTab === 'search' ? (
-          /* ... Search Content ... */
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
               <form onSubmit={handleSearch} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -195,7 +267,9 @@ export default function Home() {
                   <input type="number" step="0.1" min="0.5" value={interval} onChange={e => setInterval(parseFloat(e.target.value))} className="p-2 border rounded-xl text-black bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="flex items-end">
-                  <button type="submit" className="w-full py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md text-sm h-[38px]">조회</button>
+                  <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md text-sm h-[38px] disabled:bg-gray-300">
+                    {loading ? '...' : '조회'}
+                  </button>
                 </div>
               </form>
             </div>
@@ -217,10 +291,11 @@ export default function Home() {
                     </span>
                     <button 
                       onClick={() => handleReserveLoop(train)}
+                      // Check if tasks object contains a task with matching train_no and is_running
                       disabled={Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no)}
                       className="px-5 py-2 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 shadow-sm text-sm disabled:bg-gray-200"
                     >
-                      {Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no) ? '감시 중' : '대기하기'}
+                      대기하기
                     </button>
                   </div>
                 </div>
@@ -228,35 +303,31 @@ export default function Home() {
             </div>
           </div>
         ) : activeTab === 'manage' ? (
-          /* ... Manage Content ... */
           <div className="space-y-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-black text-gray-800">실시간 매크로 현황</h2>
-              <button onClick={handleClearTasks} className="text-xs text-gray-400 hover:text-red-500 font-bold underline">기록 삭제</button>
-            </div>
-            {Object.entries(tasks).length === 0 ? (
-              <div className="text-center py-20 text-gray-300 font-bold">실행 중인 매크로가 없습니다.</div>
+            <h2 className="text-xl font-black text-gray-800 mb-4">내 예약 작업</h2>
+            {Object.keys(tasks).length === 0 ? (
+              <div className="text-center py-20 text-gray-300 font-bold">등록된 작업이 없습니다.</div>
             ) : (
               <div className="grid gap-4">
-                {Object.entries(tasks).map(([no, task]: [string, any]) => (
-                  <div key={no} className={`p-6 rounded-3xl shadow-sm border-2 transition-all ${task.is_running ? 'bg-white border-blue-100' : 'bg-gray-50 border-transparent opacity-70'}`}>
+                {Object.values(tasks).map((task: any) => (
+                  <div key={task.id} className={`p-6 rounded-3xl shadow-sm border-2 transition-all ${task.is_running ? 'bg-white border-blue-100' : 'bg-gray-50 border-transparent opacity-70'}`}>
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md mb-2 inline-block ${task.status === 'SUCCESS' ? 'bg-green-500 text-white' : (task.is_running ? 'bg-blue-600 text-white animate-pulse' : 'bg-gray-400 text-white')}`}>
                           {task.status}
                         </span>
-                        <h3 className="text-xl font-black text-gray-800">{task.train_name || `열차 ${no}`}</h3>
+                        <h3 className="text-xl font-black text-gray-800">{task.train_name}</h3>
                       </div>
                       <div className="text-right">
-                        <span className="text-3xl font-black text-blue-600">{task.attempts.toLocaleString()}</span>
-                        <span className="text-[10px] font-bold text-gray-400 block">조회 시도 횟수</span>
+                        <span className="text-3xl font-black text-blue-600">{task.attempts?.toLocaleString() || 0}</span>
+                        <span className="text-[10px] font-bold text-gray-400 block">시도 횟수</span>
                       </div>
                     </div>
                     <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                      <span className="text-xs text-gray-400 font-bold">마지막 확인: {task.last_check || '-'}</span>
+                      <span className="text-xs text-gray-400 font-bold">마지막 확인: {task.last_check}</span>
                       {task.is_running && (
-                        <button onClick={() => handleStopTask(no)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs">
-                          감시 중지
+                        <button onClick={() => handleStopTask(task.id)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs">
+                          중지
                         </button>
                       )}
                     </div>
@@ -266,38 +337,42 @@ export default function Home() {
             )}
           </div>
         ) : (
-          /* Settings Tab Content */
           <div className="space-y-6">
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-              <h2 className="text-2xl font-black text-gray-800 mb-6">🔔 알림 설정</h2>
-              <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-                텔레그램 봇을 생성하여 토큰과 채팅 ID를 입력하면, 예약 성공 시 즉시 푸시 알림을 보내드립니다.
-              </p>
-              <form onSubmit={handleSaveSettings} className="space-y-5">
+              <h2 className="text-2xl font-black text-gray-800 mb-6">⚙️ 계정 설정</h2>
+              <div className="bg-yellow-50 p-4 rounded-xl mb-6 text-xs text-yellow-700 leading-relaxed">
+                <strong>주의:</strong> 코레일 계정 정보는 예약 매크로 실행을 위해 <strong>필수</strong>입니다. 
+                정보는 데이터베이스에 저장되지만, 보안을 위해 개인용 서버에서만 사용하는 것을 권장합니다.
+              </div>
+              <form onSubmit={saveSettings} className="space-y-5">
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">Telegram Bot Token</label>
-                  <input 
-                    type="text" 
-                    value={tgToken} 
-                    onChange={e => setTgToken(e.target.value)} 
-                    className="w-full p-4 border rounded-2xl text-black outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" 
-                    placeholder="123456789:ABCDefgh..."
-                  />
+                  <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">코레일 회원번호</label>
+                  <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="123456789" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">Chat ID</label>
-                  <input 
-                    type="text" 
-                    value={tgChatId} 
-                    onChange={e => setTgChatId(e.target.value)} 
-                    className="w-full p-4 border rounded-2xl text-black outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" 
-                    placeholder="123456789"
-                  />
+                  <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">코레일 비밀번호</label>
+                  <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="비밀번호" />
                 </div>
-                <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg">
-                  설정 저장 및 테스트 메시지 전송
+                <div className="pt-6 border-t border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">알림 (선택)</h3>
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">Telegram Bot Token</label>
+                      <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="12345..." />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">Telegram Chat ID</label>
+                      <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="12345" />
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg mt-4">
+                  설정 저장
                 </button>
               </form>
+              <button onClick={handleLogout} className="w-full py-4 mt-4 text-red-500 font-bold text-sm hover:bg-red-50 rounded-2xl transition-all">
+                로그아웃
+              </button>
             </div>
           </div>
         )}

@@ -1,176 +1,237 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import firebase_admin
+from firebase_admin import credentials, firestore
 from korail2 import Korail
-from fastapi.middleware.cors import CORSMiddleware
 import threading
-import time as time_lib
-from typing import Dict, Any
+import time
 import requests
-import os
-from dotenv import load_dotenv
+from datetime import datetime
+from typing import Dict, Any
 
-# .env 파일 로드
-load_dotenv()
+# Initialize Firebase Admin SDK
+# Use ADC (Application Default Credentials) - requires 'gcloud auth application-default login' on the server
+if not firebase_admin._apps:
+    app = firebase_admin.initialize_app()
+else:
+    app = firebase_admin.get_app()
 
-app = FastAPI()
+db = firestore.client()
 
-# CORS 설정
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Global state for managing threads
+# Structure: { task_id: { 'stop_event': threading.Event(), 'thread': threading.Thread } }
+active_tasks: Dict[str, Any] = {}
 
-class LoginRequest(BaseModel):
-    user_id: str
-    password: str
-
-class SearchRequest(BaseModel):
-    dep: str
-    arr: str
-    date: str
-    time: str
-
-class ReserveRequest(BaseModel):
-    train_no: str
-    dep_date: str
-    dep_time: str
-    dep_name: str
-    arr_name: str
-    interval: float = 3.0
-    train_name: str = ""
-
-class TelegramSettings(BaseModel):
-    token: str
-    chat_id: str
-
-korail_instance = None
-tasks: Dict[str, Any] = {}
-
-# 텔레그램 설정 초기화 (env에서 불러오기)
-tg_settings = {
-    "token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
-    "chat_id": os.getenv("TELEGRAM_CHAT_ID", "")
-}
-
-def send_telegram_msg(message: str):
-    if not tg_settings["token"] or not tg_settings["chat_id"]:
-        print("Telegram settings missing. Skipping notification.")
+def send_telegram_msg(token, chat_id, message):
+    if not token or not chat_id:
         return
     try:
-        url = f"https://api.telegram.org/bot{tg_settings['token']}/sendMessage"
-        payload = {"chat_id": tg_settings["chat_id"], "text": message}
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": message}
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
         print(f"Telegram error: {e}")
 
-@app.post("/settings/telegram")
-def update_telegram(req: TelegramSettings):
-    tg_settings["token"] = req.token
-    tg_settings["chat_id"] = req.chat_id
-    send_telegram_msg("🔔 텔레그램 알림 설정이 업데이트되었습니다!")
-    return {"status": "success", "message": "설정이 저장되었습니다."}
-
-@app.post("/login")
-def login(req: LoginRequest):
-    global korail_instance
+def get_user_credentials(uid):
+    """Fetch user credentials from Firestore users/{uid}"""
     try:
-        # env에 계정이 있고 입력값이 없으면 env 값 사용 (편의성)
-        u_id = req.user_id or os.getenv("KORAIL_ID")
-        u_pw = req.password or os.getenv("KORAIL_PW")
-        korail_instance = Korail(u_id, u_pw)
-        return {"status": "success", "message": f"Successfully logged in as {u_id}"}
+        doc = db.collection('users').document(uid).get()
+        if doc.exists:
+            return doc.to_dict()
+        return None
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error fetching credentials for {uid}: {e}")
+        return None
 
-@app.post("/search")
-def search(req: SearchRequest):
-    global korail_instance
-    if not korail_instance:
-        raise HTTPException(status_code=401, detail="먼저 로그인을 해주세요.")
-    try:
-        search_time = req.time[:6].ljust(6, '0')
-        trains = korail_instance.search_train(
-            dep=req.dep, arr=req.arr, date=req.date, time=search_time, include_no_seats=True
-        )
-        if not trains:
-            return {"status": "success", "trains": [], "message": "조회 결과가 없습니다."}
-        
-        results = []
-        for t in trains:
-            train_type = getattr(t, 'train_type_name', '열차')
-            train_no = getattr(t, 'train_no', '')
-            is_possible = getattr(t, 'reserve_possible', 'N') == 'Y'
-            seat_code = getattr(t, 'general_seat', '')
+def process_search_request(doc_snapshot, changes, read_time):
+    """Listener for search_requests collection"""
+    for change in changes:
+        if change.type.name == 'ADDED':
+            doc = change.document
+            data = doc.to_dict()
             
-            results.append({
-                "train_name": f"{train_type} {train_no}".strip(),
-                "train_no": train_no,
-                "dep_name": getattr(t, 'dep_name', ''),
-                "dep_date": getattr(t, 'dep_date', ''),
-                "dep_time": f"{getattr(t, 'dep_date', '')}{getattr(t, 'dep_time', '')}",
-                "arr_name": getattr(t, 'arr_name', ''),
-                "arr_time": f"{getattr(t, 'arr_date', '')}{getattr(t, 'arr_time', '')}",
-                "general_seat": "예약가능" if is_possible and seat_code == '11' else ("입석+좌석" if seat_code == '15' else "매진"),
-                "reserve_possible": is_possible and seat_code == '11'
-            })
-        return {"status": "success", "trains": results}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+            # Only process pending requests
+            if data.get('status') != 'PENDING':
+                continue
+                
+            print(f"Processing search request: {doc.id}")
+            
+            try:
+                # 1. Get Credentials
+                user_data = get_user_credentials(data.get('uid'))
+                if not user_data or not user_data.get('korailId') or not user_data.get('korailPw'):
+                    doc.reference.update({'status': 'ERROR', 'error': '코레일 계정 설정이 필요합니다.'})
+                    continue
+                
+                # 2. Login Korail
+                korail = Korail(user_data['korailId'], user_data['korailPw'])
+                
+                # 3. Search
+                search_time = data.get('time', '000000')[:6].ljust(6, '0')
+                trains = korail.search_train(
+                    dep=data.get('dep'),
+                    arr=data.get('arr'),
+                    date=data.get('date'),
+                    time=search_time,
+                    include_no_seats=True
+                )
+                
+                # 4. Format Results
+                results = []
+                for t in trains:
+                    train_type = getattr(t, 'train_type_name', '열차')
+                    train_no = getattr(t, 'train_no', '')
+                    is_possible = getattr(t, 'reserve_possible', 'N') == 'Y'
+                    seat_code = getattr(t, 'general_seat', '')
+                    
+                    results.append({
+                        "train_name": f"{train_type} {train_no}".strip(),
+                        "train_no": train_no,
+                        "dep_name": getattr(t, 'dep_name', ''),
+                        "dep_date": getattr(t, 'dep_date', ''),
+                        "dep_time": f"{getattr(t, 'dep_date', '')}{getattr(t, 'dep_time', '')}",
+                        "arr_name": getattr(t, 'arr_name', ''),
+                        "arr_time": f"{getattr(t, 'arr_date', '')}{getattr(t, 'arr_time', '')}",
+                        "general_seat": "예약가능" if is_possible and seat_code == '11' else ("입석+좌석" if seat_code == '15' else "매진"),
+                        "reserve_possible": is_possible and seat_code == '11'
+                    })
+                
+                # 5. Update Firestore
+                doc.reference.update({
+                    'status': 'COMPLETED',
+                    'results': results,
+                    'processedAt': datetime.now()
+                })
+                print(f"Search completed for {doc.id}")
 
-def reservation_worker(korail, req: ReserveRequest):
-    train_no = req.train_no
-    tasks[train_no]["is_running"] = True
-    tasks[train_no]["attempts"] = 0
-    tasks[train_no]["train_name"] = req.train_name
+            except Exception as e:
+                print(f"Search error: {e}")
+                doc.reference.update({'status': 'ERROR', 'error': str(e)})
+
+def run_reservation_task(task_id, task_data, stop_event):
+    """Worker function to run in a separate thread"""
+    print(f"Started worker for task {task_id}")
     
-    search_time = req.dep_time[8:14] if len(req.dep_time) >= 14 else req.dep_time
+    uid = task_data.get('uid')
     
-    while tasks.get(train_no, {}).get("is_running", False):
-        tasks[train_no]["attempts"] += 1
-        tasks[train_no]["last_check"] = time_lib.strftime("%H:%M:%S")
+    # Get credentials
+    user_data = get_user_credentials(uid)
+    if not user_data:
+        print(f"No credentials for task {task_id}")
+        return
+
+    korail_id = user_data.get('korailId')
+    korail_pw = user_data.get('korailPw')
+    tg_token = user_data.get('tgToken')
+    tg_chat_id = user_data.get('tgChatId')
+
+    try:
+        korail = Korail(korail_id, korail_pw)
+    except Exception as e:
+        print(f"Login failed for task {task_id}: {e}")
+        db.collection('tasks').document(task_id).update({'status': 'LOGIN_FAILED', 'is_running': False})
+        return
+
+    train_no = task_data.get('train_no')
+    interval = float(task_data.get('interval', 3.0))
+    # Time format from frontend: YYYYMMDDHHMMSS or HHMMSS. Korail needs HHMMSS.
+    dep_time_full = task_data.get('dep_time', '')
+    search_time = dep_time_full[8:14] if len(dep_time_full) >= 14 else dep_time_full
+    
+    attempts = 0
+    
+    while not stop_event.is_set():
+        attempts += 1
+        
+        # Periodic update to Firestore (every 10 attempts to save writes)
+        if attempts % 10 == 0:
+            db.collection('tasks').document(task_id).update({
+                'attempts': attempts,
+                'last_check': datetime.now().strftime("%H:%M:%S")
+            })
+
         try:
-            trains = korail.search_train(dep=req.dep_name, arr=req.arr_name, date=req.dep_date, time=search_time)
+            trains = korail.search_train(
+                dep=task_data.get('dep_name'),
+                arr=task_data.get('arr_name'),
+                date=task_data.get('dep_date'),
+                time=search_time
+            )
             target = next((t for t in trains if t.train_no == train_no), None)
             
             if target and getattr(target, 'general_seat', '') == '11' and getattr(target, 'reserve_possible', 'N') == 'Y':
+                print(f"Attempting reservation for {task_id}")
                 korail.reserve(target)
-                tasks[train_no]["is_running"] = False
-                tasks[train_no]["status"] = "SUCCESS"
-                send_telegram_msg(f"🎉 예약 성공!\n열차: {req.train_name}\n구간: {req.dep_name} -> {req.arr_name}\n시도: {tasks[train_no]['attempts']}회")
+                
+                # Success
+                db.collection('tasks').document(task_id).update({
+                    'status': 'SUCCESS',
+                    'is_running': False,
+                    'attempts': attempts,
+                    'completedAt': datetime.now()
+                })
+                
+                msg = f"🎉 예약 성공!\n열차: {task_data.get('train_name')}\n구간: {task_data.get('dep_name')} -> {task_data.get('arr_name')}"
+                send_telegram_msg(tg_token, tg_chat_id, msg)
                 break
-        except:
-            pass
-        time_lib.sleep(req.interval)
+                
+        except Exception as e:
+            print(f"Error in task {task_id}: {e}")
+            # Don't stop immediately on transient network errors, but log it
+        
+        time.sleep(interval)
+    
+    print(f"Worker stopped for task {task_id}")
 
-@app.post("/reserve_loop")
-def reserve_loop(req: ReserveRequest):
-    global korail_instance
-    if not korail_instance: raise HTTPException(status_code=401, detail="먼저 로그인을 해주세요.")
-    if req.train_no in tasks and tasks[req.train_no]["is_running"]: return {"message": "이미 실행 중입니다."}
-    tasks[req.train_no] = {"is_running": True, "attempts": 0, "status": "RUNNING", "train_no": req.train_no}
-    threading.Thread(target=reservation_worker, args=(korail_instance, req), daemon=True).start()
-    return {"status": "success", "message": "자동 예약을 시작했습니다."}
+def on_tasks_snapshot(col_snapshot, changes, read_time):
+    """Listener for tasks collection"""
+    for change in changes:
+        task_id = change.document.id
+        data = change.document.to_dict()
+        
+        if change.type.name == 'ADDED' or change.type.name == 'MODIFIED':
+            is_running = data.get('is_running', False)
+            status = data.get('status', '')
 
-@app.get("/tasks")
-def get_tasks():
-    return tasks
+            # Case 1: Start new task
+            if is_running and status == 'RUNNING':
+                if task_id not in active_tasks:
+                    stop_event = threading.Event()
+                    t = threading.Thread(target=run_reservation_task, args=(task_id, data, stop_event))
+                    t.daemon = True
+                    t.start()
+                    active_tasks[task_id] = {'stop_event': stop_event, 'thread': t}
+                    print(f"Task started: {task_id}")
+            
+            # Case 2: Stop existing task
+            elif not is_running:
+                if task_id in active_tasks:
+                    active_tasks[task_id]['stop_event'].set()
+                    del active_tasks[task_id]
+                    print(f"Task stopped: {task_id}")
 
-@app.post("/stop_task")
-def stop_task(train_no: str):
-    if train_no in tasks:
-        tasks[train_no]["is_running"] = False
-        tasks[train_no]["status"] = "STOPPED"
-    return {"message": "정지되었습니다."}
+        elif change.type.name == 'REMOVED':
+            if task_id in active_tasks:
+                active_tasks[task_id]['stop_event'].set()
+                del active_tasks[task_id]
+                print(f"Task removed: {task_id}")
 
-@app.post("/clear_tasks")
-def clear_tasks():
-    global tasks
-    tasks = {k: v for k, v in tasks.items() if v["is_running"]}
-    return {"message": "종료된 태스크가 정리되었습니다."}
+def main():
+    print("🚀 Korail Bot Backend Started")
+    print("Listening for changes in Firestore...")
+
+    # Watch 'tasks' collection
+    tasks_watch = db.collection('tasks').on_snapshot(on_tasks_snapshot)
+    
+    # Watch 'search_requests' collection (for search functionality)
+    search_watch = db.collection('search_requests').on_snapshot(process_search_request)
+    
+    # Keep the main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Shutting down...")
+        for t in active_tasks.values():
+            t['stop_event'].set()
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    main()
