@@ -255,17 +255,17 @@ export default function Home() {
 
   if (!user) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-6 bg-background overflow-hidden">
+      <main className="min-h-screen flex items-center justify-center p-6 bg-background overflow-hidden text-black">
         <div ref={heroRef} className={`w-full max-w-xl text-center transition-all duration-1000 ${heroVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
-          <h1 className="text-5xl md:text-8xl font-light tracking-tighter mb-4 text-foreground">
-            Korail<span className="text-foreground/30">Bot</span>
+          <h1 className="text-6xl md:text-8xl font-light tracking-tighter mb-4">
+            코레일<span className="text-foreground/30">봇</span>
           </h1>
           <p className="text-lg md:text-2xl font-light text-foreground/60 mb-12 tracking-tight px-4">
-            Seamless travel, automated for you.
+            가장 빠르고 편한 기차 예매 자동화
           </p>
           <div className="flex flex-col gap-4 items-center px-6">
             <MagneticButton size="lg" onClick={handleLogin} className="w-full max-w-xs py-6 text-base md:text-lg">
-              Get Started with Google
+              Google 계정으로 시작하기
             </MagneticButton>
           </div>
           {message && <p className="mt-8 text-sm font-medium text-red-500 animate-pulse">{message}</p>}
@@ -275,23 +275,20 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-24 font-sans selection:bg-foreground selection:text-background">
+    <main className="min-h-screen bg-background pb-24 font-sans selection:bg-foreground selection:text-background text-black">
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-foreground/5">
-        <div className="max-w-5xl mx-auto px-4 md:px-6 flex items-center justify-between h-16 md:h-20">
-          <div className="text-xl md:text-2xl font-light tracking-tighter text-foreground shrink-0">
-            Korail<span className="text-foreground/30">Bot</span>
-          </div>
-          <div className="flex gap-1 bg-foreground/5 p-1 rounded-full overflow-hidden">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 flex items-center justify-center h-20 md:h-24">
+          <div className="flex gap-2 bg-foreground/5 p-1.5 rounded-full w-full max-w-md">
             {[
-              { id: 'search', label: 'Search' },
-              { id: 'manage', label: `Manage` },
-              { id: 'settings', label: 'Settings' }
+              { id: 'search', label: '열차 조회' },
+              { id: 'manage', label: `매크로 관리` },
+              { id: 'settings', label: '설정' }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-medium transition-all ${activeTab === tab.id ? 'bg-background text-foreground shadow-sm' : 'text-foreground/40 hover:text-foreground'}`}
+                className={`flex-1 py-3 md:py-4 rounded-full text-xs md:text-sm font-bold transition-all ${activeTab === tab.id ? 'bg-background text-foreground shadow-md' : 'text-foreground/40 hover:text-foreground hover:bg-foreground/5'}`}
               >
                 {tab.id === 'manage' ? `${tab.label} (${Object.values(tasks).filter((t: any) => t.is_running).length})` : tab.label}
               </button>
@@ -306,50 +303,58 @@ export default function Home() {
             {/* Search Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-foreground/10 pb-8 md:pb-12">
               <div className="space-y-1 md:space-y-2">
-                <h2 className="text-3xl md:text-5xl font-light tracking-tighter text-foreground">Find Trains</h2>
-                <p className="text-sm md:text-base text-foreground/40 font-light">Select your destination and preferred time.</p>
+                <h2 className="text-3xl md:text-5xl font-light tracking-tighter">열차 검색</h2>
+                <p className="text-sm md:text-base text-foreground/40 font-light">출발지와 도착지, 시간을 선택하세요.</p>
               </div>
-              <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 items-stretch md:items-end bg-foreground/5 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-foreground/5 w-full md:w-auto">
+              <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 items-stretch md:items-end bg-foreground/5 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-foreground/5 w-full md:w-auto shadow-sm">
                 <div className="flex-1 grid grid-cols-2 md:flex md:flex-row gap-4">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">From</label>
-                    <select value={dep} onChange={e => setDep(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-light focus:ring-0 cursor-pointer appearance-none px-2 py-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">출발</label>
+                    <select value={dep} onChange={e => setDep(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-bold focus:ring-0 cursor-pointer appearance-none px-2 py-1">
                       {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">To</label>
-                    <select value={arr} onChange={e => setArr(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-light focus:ring-0 cursor-pointer appearance-none px-2 py-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">도착</label>
+                    <select value={arr} onChange={e => setArr(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-bold focus:ring-0 cursor-pointer appearance-none px-2 py-1">
                       {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="w-full h-px bg-foreground/10 md:hidden" />
                 <div className="w-px h-10 bg-foreground/10 hidden md:block" />
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">Date</label>
-                  <input type="date" value={displayDate} onChange={e => setDisplayDate(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-light focus:ring-0 cursor-pointer p-0 px-2" />
+                <div className="grid grid-cols-2 md:flex md:flex-row gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">날짜</label>
+                    <input type="date" value={displayDate} onChange={e => setDisplayDate(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-bold focus:ring-0 cursor-pointer p-0 px-2" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">시간</label>
+                    <select value={time} onChange={e => setTime(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-bold focus:ring-0 cursor-pointer appearance-none px-2 py-1">
+                      {Array.from({length: 24}, (_, i) => i).map(h => <option key={h} value={h.toString().padStart(2, '0')}>{h}시 이후</option>)}
+                    </select>
+                  </div>
                 </div>
                 <MagneticButton type="submit" disabled={loading} className="w-full md:w-auto md:ml-4 py-3 md:py-4">
-                  {loading ? '...' : 'Search'}
+                  {loading ? '조회중...' : '검색'}
                 </MagneticButton>
               </form>
             </div>
 
             {/* Results Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 text-black">
               {trains.map((train, i) => (
                 <div key={i} className="group relative bg-foreground/[0.02] hover:bg-foreground/[0.04] border border-foreground/5 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 transition-all duration-500">
                   <div className="flex justify-between items-start mb-6 md:mb-8">
                     <div className="px-2 md:px-3 py-1 rounded-full bg-foreground/5 text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/40 uppercase">
                       {train.train_name}
                     </div>
-                    <div className={`text-xs font-medium ${train.reserve_possible ? 'text-green-500' : 'text-foreground/20'}`}>
+                    <div className={`text-xs font-bold ${train.reserve_possible ? 'text-green-600' : 'text-foreground/20'}`}>
                       {train.general_seat}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8">
-                    <span className="text-3xl md:text-4xl font-light tracking-tighter text-foreground">
+                    <span className="text-3xl md:text-4xl font-light tracking-tighter">
                       {train.dep_time.substring(8, 10)}:{train.dep_time.substring(10, 12)}
                     </span>
                     <div className="flex-1 h-px bg-foreground/10 relative">
@@ -365,27 +370,27 @@ export default function Home() {
                     disabled={Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no)}
                     className="w-full py-3 md:py-4 text-[10px] md:text-xs tracking-widest uppercase md:opacity-0 group-hover:opacity-100 transition-all duration-500 md:translate-y-4 group-hover:translate-y-0"
                   >
-                    {Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no) ? 'Monitoring' : 'Standby'}
+                    {Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no) ? '감시 중' : '예약 대기'}
                   </MagneticButton>
                 </div>
               ))}
               {trains.length === 0 && !loading && (
                 <div className="col-span-full py-20 text-center text-foreground/20 font-light italic">
-                  Search results will appear here.
+                  검색 결과가 여기에 표시됩니다.
                 </div>
               )}
             </div>
           </div>
         ) : activeTab === 'manage' ? (
           <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="border-b border-foreground/10 pb-8 md:pb-12">
-              <h2 className="text-3xl md:text-5xl font-light tracking-tighter text-foreground">Active Tasks</h2>
-              <p className="text-sm md:text-base text-foreground/40 font-light mt-2">Real-time status of your automated reservations.</p>
+            <div className="border-b border-foreground/10 pb-8 md:pb-12 text-black">
+              <h2 className="text-3xl md:text-5xl font-light tracking-tighter">활성 작업</h2>
+              <p className="text-sm md:text-base text-foreground/40 font-light mt-2">자동 예약 매크로의 실시간 현황입니다.</p>
             </div>
             
             {Object.keys(tasks).length === 0 ? (
               <div className="text-center py-20 md:py-32 border-2 border-dashed border-foreground/5 rounded-[2rem] md:rounded-[3rem]">
-                <p className="text-foreground/20 text-lg md:text-xl font-light tracking-tight italic">No active monitoring sessions.</p>
+                <p className="text-foreground/20 text-lg md:text-xl font-light tracking-tight italic">실행 중인 예약 작업이 없습니다.</p>
               </div>
             ) : (
               <div className="grid gap-4 md:gap-6">
@@ -400,28 +405,28 @@ export default function Home() {
                           <span className="text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/30 uppercase block mb-1">
                             {task.status}
                           </span>
-                          <h3 className="text-xl md:text-3xl font-light tracking-tight text-foreground">{task.train_name}</h3>
+                          <h3 className="text-xl md:text-3xl font-light tracking-tight">{task.train_name}</h3>
                         </div>
                       </div>
                       <div className="flex items-baseline justify-end md:justify-start gap-2">
-                        <span className="text-4xl md:text-6xl font-light tracking-tighter text-foreground">{task.attempts || 0}</span>
-                        <span className="text-[9px] md:text-xs font-bold tracking-widest text-foreground/30 uppercase">tries</span>
+                        <span className="text-4xl md:text-6xl font-light tracking-tighter">{task.attempts || 0}</span>
+                        <span className="text-[9px] md:text-xs font-bold tracking-widest text-foreground/30 uppercase">회 시도</span>
                       </div>
                       <div className="flex gap-2 md:gap-3">
                         {task.is_running ? (
                           <MagneticButton variant="ghost" onClick={() => handleStopTask(task.id)} className="flex-1 md:flex-none text-red-500 hover:bg-red-500/5 px-4 md:px-8 py-3 md:py-4 text-xs">
-                            Stop
+                            정지
                           </MagneticButton>
                         ) : (
                           <MagneticButton variant="ghost" onClick={() => handleDeleteTask(task.id)} className="flex-1 md:flex-none text-foreground/40 hover:bg-foreground/5 px-4 md:px-8 py-3 md:py-4 text-xs">
-                            Clear
+                            기록 삭제
                           </MagneticButton>
                         )}
                       </div>
                     </div>
                     <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-foreground/5 flex justify-between items-center text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/20 uppercase">
-                      <span>Ref: {task.id.substring(0, 8)}</span>
-                      <span>Last checked: {task.last_check}</span>
+                      <span>ID: {task.id.substring(0, 8)}</span>
+                      <span>최근 확인: {task.last_check}</span>
                     </div>
                   </div>
                 ))}
@@ -429,47 +434,47 @@ export default function Home() {
             )}
           </div>
         ) : (
-          <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto">
+          <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto text-black">
             <div className="text-center space-y-2 md:space-y-4 mb-8 md:mb-16">
-              <h2 className="text-3xl md:text-5xl font-light tracking-tighter text-foreground">Account</h2>
-              <p className="text-sm md:text-base text-foreground/40 font-light">Manage your credentials and notifications.</p>
+              <h2 className="text-3xl md:text-5xl font-light tracking-tighter">계정 및 설정</h2>
+              <p className="text-sm md:text-base text-foreground/40 font-light">코레일 계정 및 알림을 관리합니다.</p>
             </div>
 
-            <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 space-y-8 md:space-y-12">
+            <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 space-y-8 md:space-y-12 shadow-sm">
               <form onSubmit={saveSettings} className="space-y-8 md:space-y-10">
                 <div className="grid gap-6 md:gap-8">
                   <div className="space-y-4">
-                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Korail Account</label>
-                    <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Membership Number" />
-                    <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Password" />
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">코레일 계정</label>
+                    <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="회원번호" />
+                    <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="비밀번호" />
                   </div>
                   <div className="space-y-4 pt-6 md:pt-8 border-t border-foreground/5">
-                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Telegram Integration (Optional)</label>
-                    <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Bot Token" />
-                    <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Chat ID" />
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">텔레그램 연동 (선택)</label>
+                    <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="봇 토큰" />
+                    <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="채팅 ID" />
                   </div>
                 </div>
 
                 <div className="pt-6 md:pt-8 border-t border-foreground/5 space-y-4">
-                  <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Device Notifications</label>
+                  <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">스마트폰 알림</label>
                   <MagneticButton type="button" variant={fcmToken ? 'secondary' : 'primary'} onClick={handleEnablePush} className="w-full py-4 md:py-5 text-sm md:text-base">
-                    {fcmToken ? '✓ Notifications Enabled' : 'Enable Push Notifications'}
+                    {fcmToken ? '✓ 앱 푸시 알림 활성화됨' : '앱 푸시 권한 요청'}
                   </MagneticButton>
                   {fcmToken && (
                     <button type="button" onClick={handleTestPush} className="w-full text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/20 uppercase hover:text-foreground transition-colors py-2">
-                      Test 10s Delay Notification
+                      10초 뒤 알림 테스트 실행
                     </button>
                   )}
                 </div>
 
                 <MagneticButton type="submit" className="w-full py-5 md:py-6 text-base md:text-lg">
-                  Save Changes
+                  설정 저장
                 </MagneticButton>
               </form>
               
               <div className="pt-6 md:pt-8 border-t border-foreground/5 flex justify-center">
                 <button onClick={handleLogout} className="text-[10px] md:text-xs font-bold tracking-widest text-red-500/40 hover:text-red-500 uppercase transition-colors">
-                  Disconnect Account
+                  계정 연결 해제 (로그아웃)
                 </button>
               </div>
             </div>
