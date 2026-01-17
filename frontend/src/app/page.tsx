@@ -77,8 +77,10 @@ export default function Home() {
     try {
       await signInWithPopup(auth, googleProvider);
       setMessage('✅ 로그인 성공');
-    } catch (e) {
-      setMessage('❌ 로그인 실패');
+    } catch (e: any) {
+      console.error(e);
+      // Show detailed error code for debugging
+      setMessage(`❌ 로그인 실패: ${e.code || e.message}`);
     }
   };
 

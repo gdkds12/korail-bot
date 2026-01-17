@@ -13,6 +13,11 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "mock_app_id"
 };
 
+// Check for mock config in browser
+if (typeof window !== "undefined" && firebaseConfig.apiKey === "mock_key_for_build") {
+  console.warn("⚠️ ALERT: Firebase is running with MOCK KEYS. Please check your Environment Variables in App Hosting and Re-deploy.");
+}
+
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
