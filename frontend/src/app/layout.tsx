@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { GrainOverlay } from "@/components/grain-overlay";
-import { CustomCursor } from "@/components/custom-cursor";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,17 +18,13 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Prevent zooming for app-like feel
+  userScalable: false,
 };
 
 export const metadata: Metadata = {
   title: "Korail Bot",
-  description: "Automated KTX Reservation Bot",
+  description: "가장 빠르고 편한 기차 예매 자동화",
   manifest: "/manifest.json",
-  icons: {
-    icon: "/icons/icon-192x192.png",
-    apple: "/icons/icon-192x192.png",
-  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -43,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased selection:bg-foreground selection:text-background`}
       >
