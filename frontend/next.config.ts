@@ -5,11 +5,6 @@ const config: NextConfig = {
   // Cloud Run/Firebase App Hosting을 위한 필수 설정
   output: "standalone",
   
-  // Turbopack과 Webpack 혼용 경고 해결
-  experimental: {
-    turbo: {},
-  },
-
   // Hardcode env vars to guarantee they are present at build time
   env: {
     NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyB8SSArVgaVy9ZzH69F3XbpkLxTsmWpEy4",
