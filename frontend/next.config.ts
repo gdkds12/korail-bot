@@ -15,8 +15,6 @@ const config: NextConfig = {
   images: {
     unoptimized: true,
   },
-  // Silence Turbopack/Webpack conflict
-  turbopack: {},
 };
 
 const nextConfig = withPWA({
