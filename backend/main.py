@@ -7,9 +7,19 @@ import requests
 from datetime import datetime
 from typing import Dict, Any
 
+import json
+import os
+
 # Initialize Firebase Admin SDK
-# Use ADC (Application Default Credentials) - requires 'gcloud auth application-default login' on the server
-if not firebase_admin._apps:
+# Check for service account JSON in environment variable first
+service_account_info = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+
+if service_account_info:
+    print("Initializing Firebase with service account from env var")
+    cred = credentials.Certificate(json.loads(service_account_info))
+    app = firebase_admin.initialize_app(cred)
+elif not firebase_admin._apps:
+    print("Initializing Firebase with default credentials")
     app = firebase_admin.initialize_app()
 else:
     app = firebase_admin.get_app()
