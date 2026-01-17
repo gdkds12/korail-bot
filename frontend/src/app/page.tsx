@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { auth, db, googleProvider, requestFcmToken } from '../lib/firebase';
 import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getMessaging, onMessage } from 'firebase/messaging';
 
 const VAPID_KEY = "BPNkW11fORIDrPxfHtKT8QM65DSp6jfW2gHrKBy-Dmtxbzd52vq4Lrf1FZaPCEwPNC8fbfGCSFjGYn5ReHhI_fQ";
 
@@ -57,6 +58,14 @@ export default function Home() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
+        // Foreground messaging
+        const messaging = getMessaging();
+        onMessage(messaging, (payload) => {
+          if (payload.notification) {
+            setMessage(`🔔 ${payload.notification.title}`);
+          }
+        });
+
         // Load User Settings (Korail ID, Telegram)
         const userRef = doc(db, 'users', u.uid);
         const userSnap = await getDoc(userRef);

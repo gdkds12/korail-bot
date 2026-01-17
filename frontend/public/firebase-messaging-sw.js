@@ -19,21 +19,19 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
   
-  // Extract data from the 'data' field
+  // If system notification is already present, don't show another one.
+  if (payload.notification) {
+    return;
+  }
+
+  // Fallback for data-only messages
   const title = payload.data?.title || "코레일 봇 알림";
   const body = payload.data?.body || "";
 
-  const notificationOptions = {
+  self.registration.showNotification(title, {
     body: body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-192x192.png',
-    vibrate: [200, 100, 200, 100, 200], // Stronger vibration
-    tag: 'korail-status', // Prevent stacking duplicates
-    renotify: true,      // Sound/Vibrate even if tag is same
-    data: {
-      click_url: '/'
-    }
-  };
-
-  self.registration.showNotification(title, notificationOptions);
+    tag: 'korail-status'
+  });
 });

@@ -30,14 +30,23 @@ def send_fcm_notification(token, title, body):
     if not token:
         return
     try:
-        # Use data-only payload to give Service Worker full control and prevent duplicates
         message = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
             data={
                 "title": title,
                 "body": body,
             },
             android=messaging.AndroidConfig(
                 priority="high",
+                notification=messaging.AndroidNotification(
+                    priority="high",
+                    channel_id="korail_bot_important",
+                    default_sound=True,
+                    default_vibrate_timings=True,
+                ),
             ),
             token=token,
         )
