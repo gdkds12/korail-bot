@@ -153,10 +153,16 @@ export default function Home() {
 
       // Timeout safety
       setTimeout(() => {
-        setLoading(false);
-        setMessage('⚠️ 응답 시간 초과 (백엔드가 실행 중인지 확인하세요)');
-        unsubscribe();
-      }, 10000);
+        // Only show timeout if still loading
+        setLoading((currentLoading) => {
+          if (currentLoading) {
+            setMessage('⚠️ 응답이 지연되고 있습니다. 잠시만 더 기다려주세요...');
+            // Don't unsubscribe yet, give it more time or let user cancel
+            return true; 
+          }
+          return false;
+        });
+      }, 20000); // 20 seconds
 
     } catch (e) {
       setMessage('⚠️ 요청 실패');
