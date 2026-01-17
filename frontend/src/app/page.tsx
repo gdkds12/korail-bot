@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { auth, db, googleProvider, requestFcmToken } from '../lib/firebase';
 import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { getMessaging, onMessage } from 'firebase/messaging';
+import { MagneticButton } from '@/components/magnetic-button';
+import { useReveal } from '@/hooks/use-reveal';
 
 const VAPID_KEY = "BPNkW11fORIDrPxfHtKT8QM65DSp6jfW2gHrKBy-Dmtxbzd52vq4Lrf1FZaPCEwPNC8fbfGCSFjGYn5ReHhI_fQ";
 
@@ -16,28 +18,17 @@ const MAJOR_STATIONS = [
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   
-  // Korail Credentials (stored in Firestore)
+  // States
+  const [fcmToken, setFcmToken] = useState('');
   const [korailId, setKorailId] = useState('');
   const [korailPw, setKorailPw] = useState('');
-  
   const [message, setMessage] = useState('');
-  
-  // Auto-hide message after 3 seconds
-  useEffect(() => {
-    if (message) {
-      const timer = setTimeout(() => setMessage(''), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [message]);
-
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('search');
   
   // Telegram settings
   const [tgToken, setTgToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
-  // FCM
-  const [fcmToken, setFcmToken] = useState('');
 
   // Search params
   const [dep, setDep] = useState('서울');
@@ -50,6 +41,17 @@ export default function Home() {
   // Tasks from Firestore
   const [tasks, setTasks] = useState<any>({});
 
+  // Reveal effect for hero
+  const { ref: heroRef, isVisible: heroVisible } = useReveal(0.1);
+
+  // Auto-hide message
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(''), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   // Auth & Initial Data Loading
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -59,14 +61,16 @@ export default function Home() {
       setUser(u);
       if (u) {
         // Foreground messaging
-        const messaging = getMessaging();
-        onMessage(messaging, (payload) => {
-          if (payload.notification) {
-            setMessage(`🔔 ${payload.notification.title}`);
-          }
-        });
+        try {
+          const messaging = getMessaging();
+          onMessage(messaging, (payload) => {
+            if (payload.notification) {
+              setMessage(`🔔 ${payload.notification.title}`);
+            }
+          });
+        } catch (e) {}
 
-        // Load User Settings (Korail ID, Telegram)
+        // Load User Settings
         const userRef = doc(db, 'users', u.uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
@@ -78,7 +82,7 @@ export default function Home() {
           setFcmToken(data.fcmToken || '');
         }
 
-        // Realtime Tasks Listener
+        // Tasks Listener
         const q = query(collection(db, 'tasks'), where('uid', '==', u.uid));
         const unsubscribeTasks = onSnapshot(q, (snapshot) => {
           const newTasks: any = {};
@@ -101,8 +105,6 @@ export default function Home() {
       await signInWithPopup(auth, googleProvider);
       setMessage('✅ 로그인 성공');
     } catch (e: any) {
-      console.error(e);
-      // Show detailed error code for debugging
       setMessage(`❌ 로그인 실패: ${e.code || e.message}`);
     }
   };
@@ -121,7 +123,7 @@ export default function Home() {
         korailPw,
         tgToken,
         tgChatId,
-        fcmToken // Include FCM token
+        fcmToken
       }, { merge: true });
       setMessage('✅ 설정이 저장되었습니다.');
     } catch (e) {
@@ -133,7 +135,7 @@ export default function Home() {
     const token = await requestFcmToken(VAPID_KEY);
     if (token) {
       setFcmToken(token);
-      setMessage('🔔 푸시 알림이 활성화되었습니다! 설정을 저장해주세요.');
+      setMessage('🔔 푸시 알림이 활성화되었습니다!');
     } else {
       setMessage('❌ 푸시 권한을 허용해야 합니다.');
     }
@@ -144,7 +146,7 @@ export default function Home() {
     try {
       await addDoc(collection(db, 'tasks'), {
         uid: user.uid,
-        type: 'TEST_NOTIFICATION', // Special type
+        type: 'TEST_NOTIFICATION',
         is_running: true,
         status: 'PENDING',
         createdAt: new Date(),
@@ -156,18 +158,6 @@ export default function Home() {
     }
   };
 
-  // Note: Search still needs a backend API because we can't run Korail Python lib in browser.
-  // For now, we will simulate or assume the backend provides a Search API via a different mechanism
-  // OR we can implement a "Search Request" via Firestore? 
-  // --> Let's keep using fetch() for SEARCH but point to the Python backend which is now just a worker?
-  // No, the Python backend on Linux server can expose a simple HTTP endpoint just for Search.
-  // We will assume the backend is still running a lightweight HTTP server for Search ONLY.
-  // Let's keep the fetch logic but user needs to know the IP. 
-  // *Critique*: If we move to App Hosting, we can't easily hit a random IP.
-  // *Better Idea*: Use a "search_requests" collection in Firestore.
-  // 1. User adds doc to 'search_requests'.
-  // 2. Backend watches it, performs search, writes results back to doc.
-  // 3. Frontend watches doc for results.
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -176,7 +166,6 @@ export default function Home() {
     setMessage('⏳ 조회 요청 중...');
 
     try {
-      // Create a temporary search request
       const reqRef = await addDoc(collection(db, 'search_requests'), {
         uid: user.uid,
         dep,
@@ -187,14 +176,13 @@ export default function Home() {
         status: 'PENDING'
       });
 
-      // Wait for result (One-time listener)
       const unsubscribe = onSnapshot(doc(db, 'search_requests', reqRef.id), (docSnap) => {
         const data = docSnap.data();
         if (data && data.status === 'COMPLETED') {
           setTrains(data.results || []);
           setMessage(`📅 ${data.results?.length || 0}개 열차 조회됨`);
           setLoading(false);
-          unsubscribe(); // Stop listening
+          unsubscribe();
         } else if (data && data.status === 'ERROR') {
           setMessage(`❌ 오류: ${data.error}`);
           setLoading(false);
@@ -202,17 +190,12 @@ export default function Home() {
         }
       });
 
-      // Timeout safety - Just show a warning, DO NOT unsubscribe
       setTimeout(() => {
         setLoading((currentLoading) => {
-          if (currentLoading) {
-            setMessage('⚠️ 응답이 지연되고 있습니다... (계속 대기 중)');
-          }
+          if (currentLoading) setMessage('⚠️ 응답이 지연되고 있습니다...');
           return currentLoading;
         });
-        // We do NOT call unsubscribe() here anymore.
-        // The listener will stay active until component unmounts or success.
-      }, 15000); // Warn after 15s
+      }, 15000);
 
     } catch (e) {
       setMessage('⚠️ 요청 실패');
@@ -244,7 +227,7 @@ export default function Home() {
         createdAt: new Date(),
         last_check: '-'
       });
-      alert('🚀 예약 작업이 추가되었습니다. 관리 탭에서 확인하세요!');
+      setMessage('🚀 예약 작업이 추가되었습니다.');
     } catch (e) {
       alert('⚠️ 작업 추가 실패');
     }
@@ -262,7 +245,6 @@ export default function Home() {
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     try {
-      // In Firebase SDK v9+, deleteDoc needs a doc reference
       const { deleteDoc, doc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'tasks', taskId));
       setMessage('🗑️ 작업이 삭제되었습니다.');
@@ -273,133 +255,166 @@ export default function Home() {
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white shadow-2xl rounded-3xl p-8 w-full max-w-md border border-gray-100 text-center">
-          <h1 className="text-3xl font-black text-blue-900 mb-8">Korail Bot</h1>
-          <p className="text-gray-500 mb-8">구글 계정으로 로그인하여 시작하세요.</p>
-          <button onClick={handleLogin} className="w-full py-4 bg-white border-2 border-gray-200 text-gray-700 font-bold rounded-2xl hover:bg-gray-50 transition-all flex items-center justify-center gap-3">
-             <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-6 h-6" alt="Google" />
-             Google로 계속하기
-          </button>
-          {message && <p className="mt-4 text-sm font-medium text-red-500">{message}</p>}
+      <main className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div ref={heroRef} className={`w-full max-w-xl text-center transition-all duration-1000 ${heroVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
+          <h1 className="text-6xl md:text-8xl font-light tracking-tighter mb-4 text-foreground">
+            Korail<span className="text-foreground/30">Bot</span>
+          </h1>
+          <p className="text-xl md:text-2xl font-light text-foreground/60 mb-12 tracking-tight">
+            Seamless travel, automated.
+          </p>
+          <div className="flex flex-col gap-4 items-center">
+            <MagneticButton size="lg" onClick={handleLogin} className="w-64 py-6 text-lg">
+              Get Started with Google
+            </MagneticButton>
+          </div>
+          {message && <p className="mt-8 text-sm font-medium text-red-500 animate-pulse">{message}</p>}
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-20">
-      <nav className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto flex">
-          <button onClick={() => setActiveTab('search')} className={`flex-1 py-4 font-bold text-sm transition-all ${activeTab === 'search' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400'}`}>
-            🔍 조회
-          </button>
-          <button onClick={() => setActiveTab('manage')} className={`flex-1 py-4 font-bold text-sm transition-all ${activeTab === 'manage' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400'}`}>
-            ⚡ 관리 ({Object.values(tasks).filter((t: any) => t.is_running).length})
-          </button>
-          <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 font-bold text-sm transition-all ${activeTab === 'settings' ? 'text-blue-600 border-b-4 border-blue-600' : 'text-gray-400'}`}>
-            ⚙️ 설정
-          </button>
+    <main className="min-h-screen bg-background pb-24 font-sans selection:bg-foreground selection:text-background">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-foreground/5">
+        <div className="max-w-5xl mx-auto px-6 flex items-center justify-between h-20">
+          <div className="text-2xl font-light tracking-tighter text-foreground">
+            Korail<span className="text-foreground/30">Bot</span>
+          </div>
+          <div className="flex gap-1 bg-foreground/5 p-1 rounded-full">
+            {[
+              { id: 'search', label: 'Search', icon: '🔍' },
+              { id: 'manage', label: `Manage (${Object.values(tasks).filter((t: any) => t.is_running).length})`, icon: '⚡' },
+              { id: 'settings', label: 'Settings', icon: '⚙️' }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-6 py-2 rounded-full text-xs font-medium transition-all ${activeTab === tab.id ? 'bg-background text-foreground shadow-sm' : 'text-foreground/40 hover:text-foreground'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto p-4 mt-6">
+      <div className="max-w-5xl mx-auto px-6 mt-12">
         {activeTab === 'search' ? (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-              <form onSubmit={handleSearch} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                <div className="flex flex-col"><label className="text-[10px] font-bold text-gray-400 mb-1 ml-1">출발</label>
-                  <select value={dep} onChange={e => setDep(e.target.value)} className="p-2 border rounded-xl text-black bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Search Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-foreground/10 pb-12">
+              <div className="space-y-2">
+                <h2 className="text-5xl font-light tracking-tighter text-foreground">Find Trains</h2>
+                <p className="text-foreground/40 font-light">Select your destination and preferred time.</p>
+              </div>
+              <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end bg-foreground/5 p-6 rounded-[2rem] border border-foreground/5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 ml-2">From</label>
+                  <select value={dep} onChange={e => setDep(e.target.value)} className="bg-transparent border-none text-lg font-light focus:ring-0 cursor-pointer">
                     {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <div className="flex flex-col"><label className="text-[10px] font-bold text-gray-400 mb-1 ml-1">도착</label>
-                  <select value={arr} onChange={e => setArr(e.target.value)} className="p-2 border rounded-xl text-black bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                <div className="w-px h-10 bg-foreground/10 hidden md:block" />
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 ml-2">To</label>
+                  <select value={arr} onChange={e => setArr(e.target.value)} className="bg-transparent border-none text-lg font-light focus:ring-0 cursor-pointer">
                     {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <div className="flex flex-col"><label className="text-[10px] font-bold text-gray-400 mb-1 ml-1">날짜</label>
-                  <input type="date" value={displayDate} onChange={e => setDisplayDate(e.target.value)} className="p-2 border rounded-xl text-black bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="w-px h-10 bg-foreground/10 hidden md:block" />
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 ml-2">Date</label>
+                  <input type="date" value={displayDate} onChange={e => setDisplayDate(e.target.value)} className="bg-transparent border-none text-lg font-light focus:ring-0 cursor-pointer p-0" />
                 </div>
-                <div className="flex flex-col"><label className="text-[10px] font-bold text-gray-400 mb-1 ml-1">시간</label>
-                  <select value={time} onChange={e => setTime(e.target.value)} className="p-2 border rounded-xl text-black bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                    {Array.from({length: 24}, (_, i) => i).map(h => <option key={h} value={h.toString().padStart(2, '0')}>{h}시</option>)}
-                  </select>
-                </div>
-                <div className="flex flex-col"><label className="text-[10px] font-bold text-gray-400 mb-1 ml-1">간격(초)</label>
-                  <input type="number" step="0.1" min="0.5" value={interval} onChange={e => setInterval(parseFloat(e.target.value))} className="p-2 border rounded-xl text-black bg-gray-50 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex items-end">
-                  <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md text-sm h-[38px] disabled:bg-gray-300">
-                    {loading ? '...' : '조회'}
-                  </button>
-                </div>
+                <MagneticButton type="submit" disabled={loading} className="ml-4">
+                  {loading ? '...' : 'Search'}
+                </MagneticButton>
               </form>
             </div>
 
-            <div className="grid gap-3">
+            {/* Results Grid */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {trains.map((train, i) => (
-                <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-blue-600">{train.train_name}</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-lg font-black text-gray-800">{train.dep_time.substring(8, 10)}:{train.dep_time.substring(10, 12)}</span>
-                      <span className="text-gray-300">→</span>
-                      <span className="text-lg font-bold text-gray-500">{train.arr_time.substring(8, 10)}:{train.arr_time.substring(10, 12)}</span>
+                <div key={i} className="group relative bg-foreground/[0.02] hover:bg-foreground/[0.04] border border-foreground/5 rounded-[2rem] p-8 transition-all duration-500">
+                  <div className="flex justify-between items-start mb-8">
+                    <div className="px-3 py-1 rounded-full bg-foreground/5 text-[10px] font-bold tracking-widest text-foreground/40 uppercase">
+                      {train.train_name}
+                    </div>
+                    <div className={`text-xs font-medium ${train.reserve_possible ? 'text-green-500' : 'text-foreground/20'}`}>
+                      {train.general_seat}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${train.reserve_possible ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
-                      {train.general_seat}
+                  <div className="flex items-center gap-4 mb-8">
+                    <span className="text-4xl font-light tracking-tighter text-foreground">
+                      {train.dep_time.substring(8, 10)}:{train.dep_time.substring(10, 12)}
                     </span>
-                    <button 
-                      onClick={() => handleReserveLoop(train)}
-                      // Check if tasks object contains a task with matching train_no and is_running
-                      disabled={Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no)}
-                      className="px-5 py-2 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 shadow-sm text-sm disabled:bg-gray-200"
-                    >
-                      대기하기
-                    </button>
+                    <div className="flex-1 h-px bg-foreground/10 relative">
+                      <div className="absolute right-0 -top-1 w-2 h-2 rounded-full bg-foreground/20" />
+                    </div>
+                    <span className="text-4xl font-light tracking-tighter text-foreground/40">
+                      {train.arr_time.substring(8, 10)}:{train.arr_time.substring(10, 12)}
+                    </span>
                   </div>
+                  <MagneticButton 
+                    variant="secondary"
+                    onClick={() => handleReserveLoop(train)}
+                    disabled={Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no)}
+                    className="w-full py-4 text-xs tracking-widest uppercase opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0"
+                  >
+                    {Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no) ? 'Monitoring' : 'Standby'}
+                  </MagneticButton>
                 </div>
               ))}
             </div>
           </div>
         ) : activeTab === 'manage' ? (
-          <div className="space-y-6">
-            <h2 className="text-xl font-black text-gray-800 mb-4">내 예약 작업</h2>
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="border-b border-foreground/10 pb-12">
+              <h2 className="text-5xl font-light tracking-tighter text-foreground">Active Tasks</h2>
+              <p className="text-foreground/40 font-light mt-2">Real-time status of your automated reservations.</p>
+            </div>
+            
             {Object.keys(tasks).length === 0 ? (
-              <div className="text-center py-20 text-gray-300 font-bold">등록된 작업이 없습니다.</div>
+              <div className="text-center py-32 border-2 border-dashed border-foreground/5 rounded-[3rem]">
+                <p className="text-foreground/20 text-xl font-light tracking-tight italic">No active monitoring sessions.</p>
+              </div>
             ) : (
-              <div className="grid gap-4">
+              <div className="grid gap-6">
                 {Object.values(tasks).map((task: any) => (
-                  <div key={task.id} className={`p-6 rounded-3xl shadow-sm border-2 transition-all ${task.is_running ? 'bg-white border-blue-100' : 'bg-gray-50 border-transparent opacity-70'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md mb-2 inline-block ${task.status === 'SUCCESS' ? 'bg-green-500 text-white' : (task.is_running ? 'bg-blue-600 text-white animate-pulse' : 'bg-gray-400 text-white')}`}>
-                          {task.status}
-                        </span>
-                        <h3 className="text-xl font-black text-gray-800">{task.train_name}</h3>
+                  <div key={task.id} className={`group relative p-10 rounded-[2.5rem] border-2 transition-all duration-700 ${task.is_running ? 'bg-foreground/[0.02] border-foreground/5' : 'bg-transparent border-foreground/5 opacity-50'}`}>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                      <div className="flex items-center gap-6">
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl ${task.status === 'SUCCESS' ? 'bg-green-500/10 text-green-500' : (task.is_running ? 'bg-foreground/5 text-foreground animate-pulse' : 'bg-foreground/5 text-foreground/20')}`}>
+                          {task.status === 'SUCCESS' ? '✓' : '⚡'}
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase block mb-1">
+                            {task.status}
+                          </span>
+                          <h3 className="text-3xl font-light tracking-tight text-foreground">{task.train_name}</h3>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-3xl font-black text-blue-600">{task.attempts?.toLocaleString() || 0}</span>
-                        <span className="text-[10px] font-bold text-gray-400 block">시도 횟수</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-6xl font-light tracking-tighter text-foreground">{task.attempts || 0}</span>
+                        <span className="text-xs font-bold tracking-widest text-foreground/30 uppercase">tries</span>
+                      </div>
+                      <div className="flex gap-3">
+                        {task.is_running ? (
+                          <MagneticButton variant="ghost" onClick={() => handleStopTask(task.id)} className="text-red-500 hover:bg-red-500/5 px-8 py-4">
+                            Stop
+                          </MagneticButton>
+                        ) : (
+                          <MagneticButton variant="ghost" onClick={() => handleDeleteTask(task.id)} className="text-foreground/40 hover:bg-foreground/5 px-8 py-4">
+                            Clear
+                          </MagneticButton>
+                        )}
                       </div>
                     </div>
-                    <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                      <span className="text-xs text-gray-400 font-bold">마지막 확인: {task.last_check}</span>
-                      <div className="flex gap-2">
-                        {task.is_running && (
-                          <button onClick={() => handleStopTask(task.id)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs">
-                            중지
-                          </button>
-                        )}
-                        {!task.is_running && (
-                          <button onClick={() => handleDeleteTask(task.id)} className="px-4 py-2 bg-gray-100 text-gray-500 font-bold rounded-xl hover:bg-gray-200 transition-all text-xs">
-                            삭제
-                          </button>
-                        )}
-                      </div>
+                    <div className="mt-8 pt-8 border-t border-foreground/5 flex justify-between items-center text-[10px] font-bold tracking-widest text-foreground/20 uppercase">
+                      <span>Ref: {task.id.substring(0, 8)}</span>
+                      <span>Last checked: {task.last_check}</span>
                     </div>
                   </div>
                 ))}
@@ -407,61 +422,62 @@ export default function Home() {
             )}
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-              <h2 className="text-2xl font-black text-gray-800 mb-6">⚙️ 계정 설정</h2>
-              <div className="bg-yellow-50 p-4 rounded-xl mb-6 text-xs text-yellow-700 leading-relaxed">
-                <strong>주의:</strong> 코레일 계정 정보는 예약 매크로 실행을 위해 <strong>필수</strong>입니다. 
-                정보는 데이터베이스에 저장되지만, 보안을 위해 개인용 서버에서만 사용하는 것을 권장합니다.
-              </div>
-              <form onSubmit={saveSettings} className="space-y-5">
-                <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">코레일 회원번호</label>
-                  <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="123456789" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">코레일 비밀번호</label>
-                  <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="비밀번호" />
-                </div>
-                <div className="pt-6 border-t border-gray-100">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">알림 (선택)</h3>
-                  <div className="space-y-5">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">Telegram Bot Token</label>
-                      <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="12345..." />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-400 mb-2 ml-1">Telegram Chat ID</label>
-                      <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full p-4 border rounded-2xl text-black bg-gray-50 focus:ring-2 focus:ring-blue-500" placeholder="12345" />
-                    </div>
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto">
+            <div className="text-center space-y-4 mb-16">
+              <h2 className="text-5xl font-light tracking-tighter text-foreground">Account</h2>
+              <p className="text-foreground/40 font-light">Manage your credentials and notifications.</p>
+            </div>
+
+            <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[3rem] p-12 space-y-12">
+              <form onSubmit={saveSettings} className="space-y-10">
+                <div className="grid gap-8">
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Korail Account</label>
+                    <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Membership Number" />
+                    <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Password" />
+                  </div>
+                  <div className="space-y-4 pt-8 border-t border-foreground/5">
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Telegram Integration (Optional)</label>
+                    <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Bot Token" />
+                    <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Chat ID" />
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-gray-100">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">앱 알림 (PWA)</h3>
-                  <button type="button" onClick={handleEnablePush} className={`w-full py-4 font-bold rounded-2xl transition-all border-2 ${fcmToken ? 'bg-green-50 border-green-200 text-green-600' : 'bg-blue-50 border-blue-200 text-blue-600'}`}>
-                    {fcmToken ? '✅ 푸시 알림 활성화됨' : '🔔 앱 푸시 권한 요청'}
-                  </button>
+                <div className="pt-8 border-t border-foreground/5 space-y-4">
+                  <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Device Notifications</label>
+                  <MagneticButton type="button" variant={fcmToken ? 'secondary' : 'primary'} onClick={handleEnablePush} className="w-full py-5">
+                    {fcmToken ? '✓ Notifications Enabled' : 'Enable Push Notifications'}
+                  </MagneticButton>
                   {fcmToken && (
-                    <button type="button" onClick={handleTestPush} className="w-full mt-2 py-3 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all text-sm">
-                      🧪 10초 뒤 알림 테스트
+                    <button type="button" onClick={handleTestPush} className="w-full text-[10px] font-bold tracking-widest text-foreground/20 uppercase hover:text-foreground transition-colors">
+                      Test 10s Delay Notification
                     </button>
                   )}
-                  <p className="mt-2 text-[10px] text-gray-400 text-center">브라우저 알림 권한 팝업이 뜨면 "허용"을 눌러주세요.</p>
                 </div>
 
-                <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg mt-4">
-                  설정 저장
-                </button>
+                <MagneticButton type="submit" className="w-full py-6 text-lg">
+                  Save Changes
+                </MagneticButton>
               </form>
-              <button onClick={handleLogout} className="w-full py-4 mt-4 text-red-500 font-bold text-sm hover:bg-red-50 rounded-2xl transition-all">
-                로그아웃
-              </button>
+              
+              <div className="pt-8 border-t border-foreground/5 flex justify-center">
+                <button onClick={handleLogout} className="text-xs font-bold tracking-widest text-red-500/40 hover:text-red-500 uppercase transition-colors">
+                  Disconnect Account
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
-      {message && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full text-xs font-bold shadow-2xl z-[60]">{message}</div>}
+
+      {/* Persistent Message Overlay */}
+      {message && (
+        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500">
+          <div className="bg-foreground text-background px-8 py-4 rounded-full text-xs font-bold tracking-widest uppercase shadow-2xl backdrop-blur-xl">
+            {message}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
