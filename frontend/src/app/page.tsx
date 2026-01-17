@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { auth, db, googleProvider } from '../lib/firebase';
+import { auth, db, googleProvider, requestFcmToken } from '../lib/firebase';
 import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
+
+const VAPID_KEY = "BPNkW11fORIDrPxfHtKT8QM65DSp6jfW2gHrKBy-Dmtxbzd52vq4Lrf1FZaPCEwPNC8fbfGCSFjGYn5ReHhI_fQ";
 
 const MAJOR_STATIONS = [
   '서울', '용산', '광명', '천안아산', '오송', '대전', '김천구미', '동대구', '신경주', '울산', '부산',
@@ -33,6 +35,8 @@ export default function Home() {
   // Telegram settings
   const [tgToken, setTgToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
+  // FCM
+  const [fcmToken, setFcmToken] = useState('');
 
   // Search params
   const [dep, setDep] = useState('서울');
