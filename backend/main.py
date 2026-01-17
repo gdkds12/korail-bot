@@ -30,23 +30,11 @@ def send_fcm_notification(token, title, body):
     if not token:
         return
     try:
+        # Revert to simple notification message that worked
         message = messaging.Message(
             notification=messaging.Notification(
                 title=title,
                 body=body,
-            ),
-            data={
-                "title": title,
-                "body": body,
-            },
-            android=messaging.AndroidConfig(
-                priority="high",
-                notification=messaging.AndroidNotification(
-                    priority="high",
-                    channel_id="korail_bot_important",
-                    default_sound=True,
-                    default_vibrate_timings=True,
-                ),
             ),
             token=token,
         )
@@ -165,15 +153,12 @@ def run_reservation_task(task_id, task_data, stop_event):
     while not stop_event.is_set():
         attempts += 1
         
-        # Update Firestore frequently for better UX (every try)
         try:
             db.collection('tasks').document(task_id).update({
                 'attempts': attempts,
                 'last_check': datetime.now().strftime("%H:%M:%S")
             })
-        except Exception as e:
-            # Ignore write errors to keep worker running
-            pass
+        except: pass
 
         try:
             trains = korail.search_train(
@@ -206,7 +191,6 @@ def run_reservation_task(task_id, task_data, stop_event):
                 break
                 
         except Exception as e:
-            # log(f"Error in task {task_id}: {e}") # Reduce noise
             pass
         
         time.sleep(interval)
@@ -239,19 +223,16 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
         task_id = change.document.id
         data = change.document.to_dict()
         
-        # Handle Added or Modified tasks
         if change.type.name == 'ADDED' or change.type.name == 'MODIFIED':
             is_running = data.get('is_running', False)
             status = data.get('status', '')
             task_type = data.get('type', 'RESERVATION')
 
-            # Special case: Test Notification
             if task_type == 'TEST_NOTIFICATION' and status == 'PENDING':
                 db.collection('tasks').document(task_id).update({'status': 'RUNNING'})
                 threading.Thread(target=handle_test_notification, args=(task_id, data), daemon=True).start()
                 continue
 
-            # Start only if RUNNING and not already active
             if is_running and status == 'RUNNING':
                 if task_id not in active_tasks:
                     stop_event = threading.Event()
@@ -261,8 +242,6 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
                     active_tasks[task_id] = {'stop_event': stop_event, 'thread': t}
                     log(f"Task started: {task_id}")
             
-            # Stop if explicitly marked as NOT running (and currently active)
-            # IMPORTANT: Don't stop if it's just an update of attempts count (is_running will still be True)
             elif not is_running:
                 if task_id in active_tasks:
                     active_tasks[task_id]['stop_event'].set()
@@ -280,8 +259,8 @@ def main():
     log(f"Project: {db.project}")
     log("Listening for changes in Firestore...")
 
-    tasks_watch = db.collection('tasks').on_snapshot(on_tasks_snapshot)
-    search_watch = db.collection('search_requests').on_snapshot(process_search_request)
+    db.collection('tasks').on_snapshot(on_tasks_snapshot)
+    db.collection('search_requests').on_snapshot(process_search_request)
     
     try:
         while True:
