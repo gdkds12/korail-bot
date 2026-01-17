@@ -6,20 +6,11 @@ import time
 import requests
 from datetime import datetime
 from typing import Dict, Any
-
-import json
 import os
 
 # Initialize Firebase Admin SDK
-# Check for service account JSON in environment variable first
-service_account_info = os.getenv("FIREBASE_SERVICE_ACCOUNT")
-
-if service_account_info:
-    print("Initializing Firebase with service account from env var")
-    cred = credentials.Certificate(json.loads(service_account_info))
-    app = firebase_admin.initialize_app(cred)
-elif not firebase_admin._apps:
-    print("Initializing Firebase with default credentials")
+# It automatically uses GOOGLE_APPLICATION_CREDENTIALS env var if set
+if not firebase_admin._apps:
     app = firebase_admin.initialize_app()
 else:
     app = firebase_admin.get_app()
@@ -27,7 +18,6 @@ else:
 db = firestore.client()
 
 # Global state for managing threads
-# Structure: { task_id: { 'stop_event': threading.Event(), 'thread': threading.Thread } }
 active_tasks: Dict[str, Any] = {}
 
 def send_telegram_msg(token, chat_id, message):
@@ -41,7 +31,6 @@ def send_telegram_msg(token, chat_id, message):
         print(f"Telegram error: {e}")
 
 def get_user_credentials(uid):
-    """Fetch user credentials from Firestore users/{uid}"""
     try:
         doc = db.collection('users').document(uid).get()
         if doc.exists:
@@ -52,29 +41,24 @@ def get_user_credentials(uid):
         return None
 
 def process_search_request(doc_snapshot, changes, read_time):
-    """Listener for search_requests collection"""
     for change in changes:
         if change.type.name == 'ADDED':
             doc = change.document
             data = doc.to_dict()
             
-            # Only process pending requests
             if data.get('status') != 'PENDING':
                 continue
                 
             print(f"Processing search request: {doc.id}")
             
             try:
-                # 1. Get Credentials
                 user_data = get_user_credentials(data.get('uid'))
                 if not user_data or not user_data.get('korailId') or not user_data.get('korailPw'):
                     doc.reference.update({'status': 'ERROR', 'error': '코레일 계정 설정이 필요합니다.'})
                     continue
                 
-                # 2. Login Korail
                 korail = Korail(user_data['korailId'], user_data['korailPw'])
                 
-                # 3. Search
                 search_time = data.get('time', '000000')[:6].ljust(6, '0')
                 trains = korail.search_train(
                     dep=data.get('dep'),
@@ -84,7 +68,6 @@ def process_search_request(doc_snapshot, changes, read_time):
                     include_no_seats=True
                 )
                 
-                # 4. Format Results
                 results = []
                 for t in trains:
                     train_type = getattr(t, 'train_type_name', '열차')
@@ -104,7 +87,6 @@ def process_search_request(doc_snapshot, changes, read_time):
                         "reserve_possible": is_possible and seat_code == '11'
                     })
                 
-                # 5. Update Firestore
                 doc.reference.update({
                     'status': 'COMPLETED',
                     'results': results,
@@ -117,13 +99,11 @@ def process_search_request(doc_snapshot, changes, read_time):
                 doc.reference.update({'status': 'ERROR', 'error': str(e)})
 
 def run_reservation_task(task_id, task_data, stop_event):
-    """Worker function to run in a separate thread"""
     print(f"Started worker for task {task_id}")
     
     uid = task_data.get('uid')
-    
-    # Get credentials
     user_data = get_user_credentials(uid)
+    
     if not user_data:
         print(f"No credentials for task {task_id}")
         return
@@ -142,7 +122,6 @@ def run_reservation_task(task_id, task_data, stop_event):
 
     train_no = task_data.get('train_no')
     interval = float(task_data.get('interval', 3.0))
-    # Time format from frontend: YYYYMMDDHHMMSS or HHMMSS. Korail needs HHMMSS.
     dep_time_full = task_data.get('dep_time', '')
     search_time = dep_time_full[8:14] if len(dep_time_full) >= 14 else dep_time_full
     
@@ -150,13 +129,13 @@ def run_reservation_task(task_id, task_data, stop_event):
     
     while not stop_event.is_set():
         attempts += 1
-        
-        # Periodic update to Firestore (every 10 attempts to save writes)
         if attempts % 10 == 0:
-            db.collection('tasks').document(task_id).update({
-                'attempts': attempts,
-                'last_check': datetime.now().strftime("%H:%M:%S")
-            })
+            try:
+                db.collection('tasks').document(task_id).update({
+                    'attempts': attempts,
+                    'last_check': datetime.now().strftime("%H:%M:%S")
+                })
+            except: pass
 
         try:
             trains = korail.search_train(
@@ -171,7 +150,6 @@ def run_reservation_task(task_id, task_data, stop_event):
                 print(f"Attempting reservation for {task_id}")
                 korail.reserve(target)
                 
-                # Success
                 db.collection('tasks').document(task_id).update({
                     'status': 'SUCCESS',
                     'is_running': False,
@@ -185,14 +163,12 @@ def run_reservation_task(task_id, task_data, stop_event):
                 
         except Exception as e:
             print(f"Error in task {task_id}: {e}")
-            # Don't stop immediately on transient network errors, but log it
         
         time.sleep(interval)
     
     print(f"Worker stopped for task {task_id}")
 
 def on_tasks_snapshot(col_snapshot, changes, read_time):
-    """Listener for tasks collection"""
     for change in changes:
         task_id = change.document.id
         data = change.document.to_dict()
@@ -201,7 +177,6 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
             is_running = data.get('is_running', False)
             status = data.get('status', '')
 
-            # Case 1: Start new task
             if is_running and status == 'RUNNING':
                 if task_id not in active_tasks:
                     stop_event = threading.Event()
@@ -211,7 +186,6 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
                     active_tasks[task_id] = {'stop_event': stop_event, 'thread': t}
                     print(f"Task started: {task_id}")
             
-            # Case 2: Stop existing task
             elif not is_running:
                 if task_id in active_tasks:
                     active_tasks[task_id]['stop_event'].set()
@@ -226,15 +200,12 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
 
 def main():
     print("🚀 Korail Bot Backend Started")
+    print(f"Project: {db.project}")
     print("Listening for changes in Firestore...")
 
-    # Watch 'tasks' collection
     tasks_watch = db.collection('tasks').on_snapshot(on_tasks_snapshot)
-    
-    # Watch 'search_requests' collection (for search functionality)
     search_watch = db.collection('search_requests').on_snapshot(process_search_request)
     
-    # Keep the main thread alive
     try:
         while True:
             time.sleep(1)
