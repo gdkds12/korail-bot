@@ -35,6 +35,15 @@ def send_fcm_notification(token, title, body):
                 title=title,
                 body=body,
             ),
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="korail_bot_important",
+                    priority="high",
+                    default_sound=True,
+                    default_vibrate_timings=True,
+                ),
+            ),
             token=token,
         )
         response = messaging.send(message)
