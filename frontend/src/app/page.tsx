@@ -18,6 +18,15 @@ export default function Home() {
   const [korailPw, setKorailPw] = useState('');
   
   const [message, setMessage] = useState('');
+  
+  // Auto-hide message after 3 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(''), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('search');
   
@@ -209,10 +218,15 @@ export default function Home() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-     // In a real app, you might want to actually delete the doc
-     // await deleteDoc(doc(db, 'tasks', taskId));
-     // For now, let's just mark it stop (or implement delete later)
-     handleStopTask(taskId);
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    try {
+      // In Firebase SDK v9+, deleteDoc needs a doc reference
+      const { deleteDoc, doc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'tasks', taskId));
+      setMessage('🗑️ 작업이 삭제되었습니다.');
+    } catch (e) {
+      setMessage('⚠️ 삭제 실패');
+    }
   };
 
   if (!user) {
@@ -332,11 +346,18 @@ export default function Home() {
                     </div>
                     <div className="flex justify-between items-center pt-4 border-t border-gray-100">
                       <span className="text-xs text-gray-400 font-bold">마지막 확인: {task.last_check}</span>
-                      {task.is_running && (
-                        <button onClick={() => handleStopTask(task.id)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs">
-                          중지
-                        </button>
-                      )}
+                      <div className="flex gap-2">
+                        {task.is_running && (
+                          <button onClick={() => handleStopTask(task.id)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs">
+                            중지
+                          </button>
+                        )}
+                        {!task.is_running && (
+                          <button onClick={() => handleDeleteTask(task.id)} className="px-4 py-2 bg-gray-100 text-gray-500 font-bold rounded-xl hover:bg-gray-200 transition-all text-xs">
+                            삭제
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
