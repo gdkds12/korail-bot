@@ -11,9 +11,9 @@ import { useReveal } from '@/hooks/use-reveal';
 const VAPID_KEY = "BPNkW11fORIDrPxfHtKT8QM65DSp6jfW2gHrKBy-Dmtxbzd52vq4Lrf1FZaPCEwPNC8fbfGCSFjGYn5ReHhI_fQ";
 
 const MAJOR_STATIONS = [
-  '서울', '용산', '광명', '천안아산', '오송', '대전', '김천구미', '동대구', '신경주', '울산', '부산',
-  '수원', '평택', '천안', '조치원', '대구', '구포', '영등포', '안양', '익산', '전주', '광주송정', '목포', '순천', '여수EXPO', '포항', '마산', '창원중앙', '강릉'
-].sort();
+  '서울', '용산', '영등포', '광명', '수원', '천안아산', '오송', '대전', '김천구미', '동대구', '신경주', '울산', '부산',
+  '포항', '마산', '창원중앙', '진주', '익산', '전주', '광주송정', '목포', '순천', '여수EXPO', '강릉', '평창', '안동'
+];
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -26,10 +26,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('search');
   
-  // Telegram settings
-  const [tgToken, setTgToken] = useState('');
-  const [tgChatId, setTgChatId] = useState('');
-
   // Search params
   const [dep, setDep] = useState('서울');
   const [arr, setArr] = useState('부산');
@@ -37,6 +33,9 @@ export default function Home() {
   const [time, setTime] = useState('06');
   const [interval, setInterval] = useState(3.0);
   const [trains, setTrains] = useState<any[]>([]);
+  
+  // UI States
+  const [showPicker, setShowPicker] = useState<'dep' | 'arr' | null>(null);
   
   // Tasks from Firestore
   const [tasks, setTasks] = useState<any>({});
@@ -77,9 +76,8 @@ export default function Home() {
           const data = userSnap.data();
           setKorailId(data.korailId || '');
           setKorailPw(data.korailPw || '');
-          setTgToken(data.tgToken || '');
-          setTgChatId(data.tgChatId || '');
           setFcmToken(data.fcmToken || '');
+          if (data.interval) setInterval(data.interval);
         }
 
         // Tasks Listener
@@ -121,9 +119,8 @@ export default function Home() {
       await setDoc(doc(db, 'users', user.uid), {
         korailId,
         korailPw,
-        tgToken,
-        tgChatId,
-        fcmToken
+        fcmToken,
+        interval
       }, { merge: true });
       setMessage('✅ 설정이 저장되었습니다.');
     } catch (e) {
@@ -253,6 +250,36 @@ export default function Home() {
     }
   };
 
+  const StationPicker = () => {
+    if (!showPicker) return null;
+    const currentVal = showPicker === 'dep' ? dep : arr;
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="bg-white border border-foreground/10 w-full max-w-lg rounded-[2.5rem] shadow-2xl p-8 max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-2xl font-light tracking-tight">{showPicker === 'dep' ? '출발역' : '도착역'} 선택</h3>
+            <button onClick={() => setShowPicker(null)} className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center text-xl">✕</button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 overflow-y-auto pr-2 custom-scrollbar">
+            {MAJOR_STATIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => {
+                  if (showPicker === 'dep') setDep(s);
+                  else setArr(s);
+                  setShowPicker(null);
+                }}
+                className={`py-4 rounded-2xl text-sm transition-all ${currentVal === s ? 'bg-foreground text-background font-bold' : 'bg-foreground/5 hover:bg-foreground/10'}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (!user) {
     return (
       <main className="min-h-screen flex items-center justify-center p-6 bg-background overflow-hidden text-black">
@@ -276,6 +303,8 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background pb-24 font-sans selection:bg-foreground selection:text-background text-black">
+      <StationPicker />
+      
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-foreground/5">
         <div className="max-w-5xl mx-auto px-4 md:px-6 flex items-center justify-center h-20 md:h-24">
@@ -309,16 +338,19 @@ export default function Home() {
               <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 items-stretch md:items-end bg-foreground/5 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-foreground/5 w-full md:w-auto shadow-sm">
                 <div className="flex-1 grid grid-cols-2 md:flex md:flex-row gap-4">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">출발</label>
-                    <select value={dep} onChange={e => setDep(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-bold focus:ring-0 cursor-pointer appearance-none px-2 py-1">
-                      {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2 text-center md:text-left">출발</label>
+                    <button type="button" onClick={() => setShowPicker('dep')} className="bg-transparent border-none text-xl md:text-2xl font-bold py-1 px-4 hover:bg-foreground/5 rounded-xl transition-all">
+                      {dep}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-center md:pt-4">
+                    <span className="text-foreground/20 text-2xl md:text-3xl font-light">→</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">도착</label>
-                    <select value={arr} onChange={e => setArr(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-bold focus:ring-0 cursor-pointer appearance-none px-2 py-1">
-                      {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2 text-center md:text-left">도착</label>
+                    <button type="button" onClick={() => setShowPicker('arr')} className="bg-transparent border-none text-xl md:text-2xl font-bold py-1 px-4 hover:bg-foreground/5 rounded-xl transition-all">
+                      {arr}
+                    </button>
                   </div>
                 </div>
                 <div className="w-full h-px bg-foreground/10 md:hidden" />
@@ -368,7 +400,7 @@ export default function Home() {
                     variant="secondary"
                     onClick={() => handleReserveLoop(train)}
                     disabled={Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no)}
-                    className="w-full py-3 md:py-4 text-[10px] md:text-xs tracking-widest uppercase md:opacity-0 group-hover:opacity-100 transition-all duration-500 md:translate-y-4 group-hover:translate-y-0"
+                    className="w-full py-3 md:py-4 text-[10px] md:text-xs tracking-widest uppercase md:opacity-0 group-hover:opacity-100 transition-all duration-500 md:translate-y-4 group-hover:translate-y-0 shadow-sm"
                   >
                     {Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no) ? '감시 중' : '예약 대기'}
                   </MagneticButton>
@@ -437,7 +469,7 @@ export default function Home() {
           <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto text-black">
             <div className="text-center space-y-2 md:space-y-4 mb-8 md:mb-16">
               <h2 className="text-3xl md:text-5xl font-light tracking-tighter">계정 및 설정</h2>
-              <p className="text-sm md:text-base text-foreground/40 font-light">코레일 계정 및 알림을 관리합니다.</p>
+              <p className="text-sm md:text-base text-foreground/40 font-light">코레일 계정 및 앱 설정을 관리합니다.</p>
             </div>
 
             <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 space-y-8 md:space-y-12 shadow-sm">
@@ -448,10 +480,25 @@ export default function Home() {
                     <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="회원번호" />
                     <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="비밀번호" />
                   </div>
+                  
                   <div className="space-y-4 pt-6 md:pt-8 border-t border-foreground/5">
-                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">텔레그램 연동 (선택)</label>
-                    <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="봇 토큰" />
-                    <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="채팅 ID" />
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">매크로 설정</label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-light">조회 빈도 (새로고침 주기)</span>
+                        <span className="text-lg font-bold">{interval}초</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.5" 
+                        max="10" 
+                        step="0.1" 
+                        value={interval} 
+                        onChange={e => setInterval(parseFloat(e.target.value))} 
+                        className="w-full h-2 bg-foreground/10 rounded-lg appearance-none cursor-pointer accent-foreground"
+                      />
+                      <p className="text-[10px] text-foreground/30 mt-1">※ 너무 짧으면 코레일 서버에서 차단될 수 있습니다 (권장: 2.0초 이상)</p>
+                    </div>
                   </div>
                 </div>
 
