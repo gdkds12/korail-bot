@@ -19,20 +19,21 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
   
-  // If the payload has a notification field, the browser will likely handle it automatically
-  // especially on Android. If we also call showNotification, we get duplicates.
-  // We only show a manual notification if payload.notification is missing but data is present.
-  if (payload.notification) {
-    return; 
-  }
+  // Extract data from the 'data' field
+  const title = payload.data?.title || "코레일 봇 알림";
+  const body = payload.data?.body || "";
 
-  const notificationTitle = payload.data.title || "코레일 봇 알림";
   const notificationOptions = {
-    body: payload.data.body || "",
+    body: body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-192x192.png',
-    vibrate: [200, 100, 200]
+    vibrate: [200, 100, 200, 100, 200], // Stronger vibration
+    tag: 'korail-status', // Prevent stacking duplicates
+    renotify: true,      // Sound/Vibrate even if tag is same
+    data: {
+      click_url: '/'
+    }
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(title, notificationOptions);
 });
