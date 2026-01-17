@@ -5,14 +5,6 @@ const config: NextConfig = {
   // Cloud Run/Firebase App Hosting을 위한 필수 설정
   output: "standalone",
   
-  // 빌드 중 사소한 오류 무시 (배포 성공률 높임)
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  
   // Hardcode env vars to guarantee they are present at build time
   env: {
     NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyB8SSArVgaVy9ZzH69F3XbpkLxTsmWpEy4",
@@ -27,7 +19,7 @@ const nextConfig = withPWA({
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
-  disable: false, // Enable PWA in development too for testing
+  disable: false, 
   workboxOptions: {
     disableDevLogs: true,
   },
