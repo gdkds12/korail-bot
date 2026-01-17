@@ -255,16 +255,16 @@ export default function Home() {
 
   if (!user) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-6 bg-background">
+      <main className="min-h-screen flex items-center justify-center p-6 bg-background overflow-hidden">
         <div ref={heroRef} className={`w-full max-w-xl text-center transition-all duration-1000 ${heroVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
-          <h1 className="text-6xl md:text-8xl font-light tracking-tighter mb-4 text-foreground">
+          <h1 className="text-5xl md:text-8xl font-light tracking-tighter mb-4 text-foreground">
             Korail<span className="text-foreground/30">Bot</span>
           </h1>
-          <p className="text-xl md:text-2xl font-light text-foreground/60 mb-12 tracking-tight">
-            Seamless travel, automated.
+          <p className="text-lg md:text-2xl font-light text-foreground/60 mb-12 tracking-tight px-4">
+            Seamless travel, automated for you.
           </p>
-          <div className="flex flex-col gap-4 items-center">
-            <MagneticButton size="lg" onClick={handleLogin} className="w-64 py-6 text-lg">
+          <div className="flex flex-col gap-4 items-center px-6">
+            <MagneticButton size="lg" onClick={handleLogin} className="w-full max-w-xs py-6 text-base md:text-lg">
               Get Started with Google
             </MagneticButton>
           </div>
@@ -278,57 +278,59 @@ export default function Home() {
     <main className="min-h-screen bg-background pb-24 font-sans selection:bg-foreground selection:text-background">
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-foreground/5">
-        <div className="max-w-5xl mx-auto px-6 flex items-center justify-between h-20">
-          <div className="text-2xl font-light tracking-tighter text-foreground">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 flex items-center justify-between h-16 md:h-20">
+          <div className="text-xl md:text-2xl font-light tracking-tighter text-foreground shrink-0">
             Korail<span className="text-foreground/30">Bot</span>
           </div>
-          <div className="flex gap-1 bg-foreground/5 p-1 rounded-full">
+          <div className="flex gap-1 bg-foreground/5 p-1 rounded-full overflow-hidden">
             {[
-              { id: 'search', label: 'Search', icon: '🔍' },
-              { id: 'manage', label: `Manage (${Object.values(tasks).filter((t: any) => t.is_running).length})`, icon: '⚡' },
-              { id: 'settings', label: 'Settings', icon: '⚙️' }
+              { id: 'search', label: 'Search' },
+              { id: 'manage', label: `Manage` },
+              { id: 'settings', label: 'Settings' }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-6 py-2 rounded-full text-xs font-medium transition-all ${activeTab === tab.id ? 'bg-background text-foreground shadow-sm' : 'text-foreground/40 hover:text-foreground'}`}
+                className={`px-3 md:px-6 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-medium transition-all ${activeTab === tab.id ? 'bg-background text-foreground shadow-sm' : 'text-foreground/40 hover:text-foreground'}`}
               >
-                {tab.label}
+                {tab.id === 'manage' ? `${tab.label} (${Object.values(tasks).filter((t: any) => t.is_running).length})` : tab.label}
               </button>
             ))}
           </div>
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-6 mt-12">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 mt-8 md:mt-12">
         {activeTab === 'search' ? (
-          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Search Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-foreground/10 pb-12">
-              <div className="space-y-2">
-                <h2 className="text-5xl font-light tracking-tighter text-foreground">Find Trains</h2>
-                <p className="text-foreground/40 font-light">Select your destination and preferred time.</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-foreground/10 pb-8 md:pb-12">
+              <div className="space-y-1 md:space-y-2">
+                <h2 className="text-3xl md:text-5xl font-light tracking-tighter text-foreground">Find Trains</h2>
+                <p className="text-sm md:text-base text-foreground/40 font-light">Select your destination and preferred time.</p>
               </div>
-              <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end bg-foreground/5 p-6 rounded-[2rem] border border-foreground/5">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 ml-2">From</label>
-                  <select value={dep} onChange={e => setDep(e.target.value)} className="bg-transparent border-none text-lg font-light focus:ring-0 cursor-pointer">
-                    {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+              <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 items-stretch md:items-end bg-foreground/5 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-foreground/5 w-full md:w-auto">
+                <div className="flex-1 grid grid-cols-2 md:flex md:flex-row gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">From</label>
+                    <select value={dep} onChange={e => setDep(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-light focus:ring-0 cursor-pointer appearance-none px-2 py-1">
+                      {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">To</label>
+                    <select value={arr} onChange={e => setArr(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-light focus:ring-0 cursor-pointer appearance-none px-2 py-1">
+                      {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
                 </div>
+                <div className="w-full h-px bg-foreground/10 md:hidden" />
                 <div className="w-px h-10 bg-foreground/10 hidden md:block" />
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 ml-2">To</label>
-                  <select value={arr} onChange={e => setArr(e.target.value)} className="bg-transparent border-none text-lg font-light focus:ring-0 cursor-pointer">
-                    {MAJOR_STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-foreground/30 ml-2">Date</label>
+                  <input type="date" value={displayDate} onChange={e => setDisplayDate(e.target.value)} className="bg-transparent border-none text-base md:text-lg font-light focus:ring-0 cursor-pointer p-0 px-2" />
                 </div>
-                <div className="w-px h-10 bg-foreground/10 hidden md:block" />
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 ml-2">Date</label>
-                  <input type="date" value={displayDate} onChange={e => setDisplayDate(e.target.value)} className="bg-transparent border-none text-lg font-light focus:ring-0 cursor-pointer p-0" />
-                </div>
-                <MagneticButton type="submit" disabled={loading} className="ml-4">
+                <MagneticButton type="submit" disabled={loading} className="w-full md:w-auto md:ml-4 py-3 md:py-4">
                   {loading ? '...' : 'Search'}
                 </MagneticButton>
               </form>
@@ -337,23 +339,23 @@ export default function Home() {
             {/* Results Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {trains.map((train, i) => (
-                <div key={i} className="group relative bg-foreground/[0.02] hover:bg-foreground/[0.04] border border-foreground/5 rounded-[2rem] p-8 transition-all duration-500">
-                  <div className="flex justify-between items-start mb-8">
-                    <div className="px-3 py-1 rounded-full bg-foreground/5 text-[10px] font-bold tracking-widest text-foreground/40 uppercase">
+                <div key={i} className="group relative bg-foreground/[0.02] hover:bg-foreground/[0.04] border border-foreground/5 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 transition-all duration-500">
+                  <div className="flex justify-between items-start mb-6 md:mb-8">
+                    <div className="px-2 md:px-3 py-1 rounded-full bg-foreground/5 text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/40 uppercase">
                       {train.train_name}
                     </div>
                     <div className={`text-xs font-medium ${train.reserve_possible ? 'text-green-500' : 'text-foreground/20'}`}>
                       {train.general_seat}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 mb-8">
-                    <span className="text-4xl font-light tracking-tighter text-foreground">
+                  <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8">
+                    <span className="text-3xl md:text-4xl font-light tracking-tighter text-foreground">
                       {train.dep_time.substring(8, 10)}:{train.dep_time.substring(10, 12)}
                     </span>
                     <div className="flex-1 h-px bg-foreground/10 relative">
-                      <div className="absolute right-0 -top-1 w-2 h-2 rounded-full bg-foreground/20" />
+                      <div className="absolute right-0 -top-1 w-1.5 md:w-2 h-1.5 md:h-2 rounded-full bg-foreground/20" />
                     </div>
-                    <span className="text-4xl font-light tracking-tighter text-foreground/40">
+                    <span className="text-3xl md:text-4xl font-light tracking-tighter text-foreground/40">
                       {train.arr_time.substring(8, 10)}:{train.arr_time.substring(10, 12)}
                     </span>
                   </div>
@@ -361,58 +363,63 @@ export default function Home() {
                     variant="secondary"
                     onClick={() => handleReserveLoop(train)}
                     disabled={Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no)}
-                    className="w-full py-4 text-xs tracking-widest uppercase opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0"
+                    className="w-full py-3 md:py-4 text-[10px] md:text-xs tracking-widest uppercase md:opacity-0 group-hover:opacity-100 transition-all duration-500 md:translate-y-4 group-hover:translate-y-0"
                   >
                     {Object.values(tasks).some((t: any) => t.is_running && t.train_no === train.train_no) ? 'Monitoring' : 'Standby'}
                   </MagneticButton>
                 </div>
               ))}
+              {trains.length === 0 && !loading && (
+                <div className="col-span-full py-20 text-center text-foreground/20 font-light italic">
+                  Search results will appear here.
+                </div>
+              )}
             </div>
           </div>
         ) : activeTab === 'manage' ? (
-          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="border-b border-foreground/10 pb-12">
-              <h2 className="text-5xl font-light tracking-tighter text-foreground">Active Tasks</h2>
-              <p className="text-foreground/40 font-light mt-2">Real-time status of your automated reservations.</p>
+          <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="border-b border-foreground/10 pb-8 md:pb-12">
+              <h2 className="text-3xl md:text-5xl font-light tracking-tighter text-foreground">Active Tasks</h2>
+              <p className="text-sm md:text-base text-foreground/40 font-light mt-2">Real-time status of your automated reservations.</p>
             </div>
             
             {Object.keys(tasks).length === 0 ? (
-              <div className="text-center py-32 border-2 border-dashed border-foreground/5 rounded-[3rem]">
-                <p className="text-foreground/20 text-xl font-light tracking-tight italic">No active monitoring sessions.</p>
+              <div className="text-center py-20 md:py-32 border-2 border-dashed border-foreground/5 rounded-[2rem] md:rounded-[3rem]">
+                <p className="text-foreground/20 text-lg md:text-xl font-light tracking-tight italic">No active monitoring sessions.</p>
               </div>
             ) : (
-              <div className="grid gap-6">
+              <div className="grid gap-4 md:gap-6">
                 {Object.values(tasks).map((task: any) => (
-                  <div key={task.id} className={`group relative p-10 rounded-[2.5rem] border-2 transition-all duration-700 ${task.is_running ? 'bg-foreground/[0.02] border-foreground/5' : 'bg-transparent border-foreground/5 opacity-50'}`}>
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-                      <div className="flex items-center gap-6">
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl ${task.status === 'SUCCESS' ? 'bg-green-500/10 text-green-500' : (task.is_running ? 'bg-foreground/5 text-foreground animate-pulse' : 'bg-foreground/5 text-foreground/20')}`}>
+                  <div key={task.id} className={`group relative p-6 md:p-10 rounded-[1.5rem] md:rounded-[2.5rem] border-2 transition-all duration-700 ${task.is_running ? 'bg-foreground/[0.02] border-foreground/5' : 'bg-transparent border-foreground/5 opacity-50'}`}>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 md:gap-8">
+                      <div className="flex items-center gap-4 md:gap-6">
+                        <div className={`w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center text-xl md:text-2xl ${task.status === 'SUCCESS' ? 'bg-green-500/10 text-green-500' : (task.is_running ? 'bg-foreground/5 text-foreground animate-pulse' : 'bg-foreground/5 text-foreground/20')}`}>
                           {task.status === 'SUCCESS' ? '✓' : '⚡'}
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase block mb-1">
+                          <span className="text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/30 uppercase block mb-1">
                             {task.status}
                           </span>
-                          <h3 className="text-3xl font-light tracking-tight text-foreground">{task.train_name}</h3>
+                          <h3 className="text-xl md:text-3xl font-light tracking-tight text-foreground">{task.train_name}</h3>
                         </div>
                       </div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-6xl font-light tracking-tighter text-foreground">{task.attempts || 0}</span>
-                        <span className="text-xs font-bold tracking-widest text-foreground/30 uppercase">tries</span>
+                      <div className="flex items-baseline justify-end md:justify-start gap-2">
+                        <span className="text-4xl md:text-6xl font-light tracking-tighter text-foreground">{task.attempts || 0}</span>
+                        <span className="text-[9px] md:text-xs font-bold tracking-widest text-foreground/30 uppercase">tries</span>
                       </div>
-                      <div className="flex gap-3">
+                      <div className="flex gap-2 md:gap-3">
                         {task.is_running ? (
-                          <MagneticButton variant="ghost" onClick={() => handleStopTask(task.id)} className="text-red-500 hover:bg-red-500/5 px-8 py-4">
+                          <MagneticButton variant="ghost" onClick={() => handleStopTask(task.id)} className="flex-1 md:flex-none text-red-500 hover:bg-red-500/5 px-4 md:px-8 py-3 md:py-4 text-xs">
                             Stop
                           </MagneticButton>
                         ) : (
-                          <MagneticButton variant="ghost" onClick={() => handleDeleteTask(task.id)} className="text-foreground/40 hover:bg-foreground/5 px-8 py-4">
+                          <MagneticButton variant="ghost" onClick={() => handleDeleteTask(task.id)} className="flex-1 md:flex-none text-foreground/40 hover:bg-foreground/5 px-4 md:px-8 py-3 md:py-4 text-xs">
                             Clear
                           </MagneticButton>
                         )}
                       </div>
                     </div>
-                    <div className="mt-8 pt-8 border-t border-foreground/5 flex justify-between items-center text-[10px] font-bold tracking-widest text-foreground/20 uppercase">
+                    <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-foreground/5 flex justify-between items-center text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/20 uppercase">
                       <span>Ref: {task.id.substring(0, 8)}</span>
                       <span>Last checked: {task.last_check}</span>
                     </div>
@@ -422,46 +429,46 @@ export default function Home() {
             )}
           </div>
         ) : (
-          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto">
-            <div className="text-center space-y-4 mb-16">
-              <h2 className="text-5xl font-light tracking-tighter text-foreground">Account</h2>
-              <p className="text-foreground/40 font-light">Manage your credentials and notifications.</p>
+          <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto">
+            <div className="text-center space-y-2 md:space-y-4 mb-8 md:mb-16">
+              <h2 className="text-3xl md:text-5xl font-light tracking-tighter text-foreground">Account</h2>
+              <p className="text-sm md:text-base text-foreground/40 font-light">Manage your credentials and notifications.</p>
             </div>
 
-            <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[3rem] p-12 space-y-12">
-              <form onSubmit={saveSettings} className="space-y-10">
-                <div className="grid gap-8">
+            <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 space-y-8 md:space-y-12">
+              <form onSubmit={saveSettings} className="space-y-8 md:space-y-10">
+                <div className="grid gap-6 md:gap-8">
                   <div className="space-y-4">
                     <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Korail Account</label>
-                    <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Membership Number" />
-                    <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Password" />
+                    <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Membership Number" />
+                    <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-base md:text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Password" />
                   </div>
-                  <div className="space-y-4 pt-8 border-t border-foreground/5">
+                  <div className="space-y-4 pt-6 md:pt-8 border-t border-foreground/5">
                     <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Telegram Integration (Optional)</label>
-                    <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Bot Token" />
-                    <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-2xl p-5 text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Chat ID" />
+                    <input type="text" value={tgToken} onChange={e => setTgToken(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Bot Token" />
+                    <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl md:rounded-2xl p-4 md:p-5 text-xs md:text-sm font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="Chat ID" />
                   </div>
                 </div>
 
-                <div className="pt-8 border-t border-foreground/5 space-y-4">
+                <div className="pt-6 md:pt-8 border-t border-foreground/5 space-y-4">
                   <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">Device Notifications</label>
-                  <MagneticButton type="button" variant={fcmToken ? 'secondary' : 'primary'} onClick={handleEnablePush} className="w-full py-5">
+                  <MagneticButton type="button" variant={fcmToken ? 'secondary' : 'primary'} onClick={handleEnablePush} className="w-full py-4 md:py-5 text-sm md:text-base">
                     {fcmToken ? '✓ Notifications Enabled' : 'Enable Push Notifications'}
                   </MagneticButton>
                   {fcmToken && (
-                    <button type="button" onClick={handleTestPush} className="w-full text-[10px] font-bold tracking-widest text-foreground/20 uppercase hover:text-foreground transition-colors">
+                    <button type="button" onClick={handleTestPush} className="w-full text-[9px] md:text-[10px] font-bold tracking-widest text-foreground/20 uppercase hover:text-foreground transition-colors py-2">
                       Test 10s Delay Notification
                     </button>
                   )}
                 </div>
 
-                <MagneticButton type="submit" className="w-full py-6 text-lg">
+                <MagneticButton type="submit" className="w-full py-5 md:py-6 text-base md:text-lg">
                   Save Changes
                 </MagneticButton>
               </form>
               
-              <div className="pt-8 border-t border-foreground/5 flex justify-center">
-                <button onClick={handleLogout} className="text-xs font-bold tracking-widest text-red-500/40 hover:text-red-500 uppercase transition-colors">
+              <div className="pt-6 md:pt-8 border-t border-foreground/5 flex justify-center">
+                <button onClick={handleLogout} className="text-[10px] md:text-xs font-bold tracking-widest text-red-500/40 hover:text-red-500 uppercase transition-colors">
                   Disconnect Account
                 </button>
               </div>
@@ -472,8 +479,8 @@ export default function Home() {
 
       {/* Persistent Message Overlay */}
       {message && (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500">
-          <div className="bg-foreground text-background px-8 py-4 rounded-full text-xs font-bold tracking-widest uppercase shadow-2xl backdrop-blur-xl">
+        <div className="fixed bottom-8 md:bottom-12 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500 w-[90%] md:w-auto">
+          <div className="bg-foreground text-background px-6 md:px-8 py-3 md:py-4 rounded-full text-[10px] md:text-xs font-bold tracking-widest uppercase shadow-2xl backdrop-blur-xl text-center">
             {message}
           </div>
         </div>
