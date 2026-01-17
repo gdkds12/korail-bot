@@ -1,5 +1,6 @@
 import firebase_admin
 from firebase_admin import credentials, firestore, messaging
+from korail2 import Korail
 import threading
 import time
 import requests
@@ -199,6 +200,27 @@ def run_reservation_task(task_id, task_data, stop_event):
     
     log(f"Worker stopped for task {task_id}")
 
+def handle_test_notification(task_id, task_data):
+    log(f"🔔 Received test notification request: {task_id}")
+    time.sleep(10)
+    
+    uid = task_data.get('uid')
+    user_data = get_user_credentials(uid)
+    if user_data:
+        fcm_token = user_data.get('fcmToken')
+        tg_token = user_data.get('tgToken')
+        tg_chat_id = user_data.get('tgChatId')
+        
+        msg = "🚀 코레일 봇 알림 테스트 성공!"
+        send_fcm_notification(fcm_token, "알림 테스트", msg)
+        send_telegram_msg(tg_token, tg_chat_id, msg)
+        
+    db.collection('tasks').document(task_id).update({
+        'status': 'TEST_COMPLETED',
+        'is_running': False
+    })
+    log(f"✅ Test notification completed: {task_id}")
+
 def on_tasks_snapshot(col_snapshot, changes, read_time):
     for change in changes:
         task_id = change.document.id
@@ -208,6 +230,13 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
         if change.type.name == 'ADDED' or change.type.name == 'MODIFIED':
             is_running = data.get('is_running', False)
             status = data.get('status', '')
+            task_type = data.get('type', 'RESERVATION')
+
+            # Special case: Test Notification
+            if task_type == 'TEST_NOTIFICATION' and status == 'PENDING':
+                db.collection('tasks').document(task_id).update({'status': 'RUNNING'})
+                threading.Thread(target=handle_test_notification, args=(task_id, data), daemon=True).start()
+                continue
 
             # Start only if RUNNING and not already active
             if is_running and status == 'RUNNING':

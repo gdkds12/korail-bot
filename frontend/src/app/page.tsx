@@ -130,6 +130,23 @@ export default function Home() {
     }
   };
 
+  const handleTestPush = async () => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'tasks'), {
+        uid: user.uid,
+        type: 'TEST_NOTIFICATION', // Special type
+        is_running: true,
+        status: 'PENDING',
+        createdAt: new Date(),
+        train_name: '테스트 열차'
+      });
+      setMessage('⏳ 10초 뒤에 알림이 발송됩니다...');
+    } catch (e) {
+      setMessage('❌ 요청 실패');
+    }
+  };
+
   // Note: Search still needs a backend API because we can't run Korail Python lib in browser.
   // For now, we will simulate or assume the backend provides a Search API via a different mechanism
   // OR we can implement a "Search Request" via Firestore? 
@@ -416,6 +433,11 @@ export default function Home() {
                   <button type="button" onClick={handleEnablePush} className={`w-full py-4 font-bold rounded-2xl transition-all border-2 ${fcmToken ? 'bg-green-50 border-green-200 text-green-600' : 'bg-blue-50 border-blue-200 text-blue-600'}`}>
                     {fcmToken ? '✅ 푸시 알림 활성화됨' : '🔔 앱 푸시 권한 요청'}
                   </button>
+                  {fcmToken && (
+                    <button type="button" onClick={handleTestPush} className="w-full mt-2 py-3 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all text-sm">
+                      🧪 10초 뒤 알림 테스트
+                    </button>
+                  )}
                   <p className="mt-2 text-[10px] text-gray-400 text-center">브라우저 알림 권한 팝업이 뜨면 "허용"을 눌러주세요.</p>
                 </div>
 
