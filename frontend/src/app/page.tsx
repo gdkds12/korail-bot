@@ -7,7 +7,7 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, setDoc, g
 import { getMessaging, onMessage } from 'firebase/messaging';
 import { MagneticButton } from '@/components/magnetic-button';
 import { useReveal } from '@/hooks/use-reveal';
-import { format, addDays } from 'date-fns';
+import { format, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isBefore, startOfDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
 const VAPID_KEY = "BPNkW11fORIDrPxfHtKT8QM65DSp6jfW2gHrKBy-Dmtxbzd52vq4Lrf1FZaPCEwPNC8fbfGCSFjGYn5ReHhI_fQ";
@@ -32,6 +32,7 @@ export default function Home() {
   const [dep, setDep] = useState('서울');
   const [arr, setArr] = useState('부산');
   const [displayDate, setDisplayDate] = useState(new Date());
+  const [viewDate, setViewDate] = useState(new Date());
   const [time, setTime] = useState('06');
   const [interval, setInterval] = useState(3.0);
   const [trains, setTrains] = useState<any[]>([]);
@@ -256,14 +257,54 @@ export default function Home() {
       </Modal>
 
       <Modal isOpen={showDatePicker} onClose={() => setShowDatePicker(false)} title="날짜 선택">
-        <div className="grid grid-cols-1 gap-2">
-          {Array.from({ length: 31 }, (_, i) => addDays(new Date(), i)).map((date) => (
-            <button key={date.toISOString()} onClick={() => { setDisplayDate(date); setShowDatePicker(false); }}
-              className={`py-4 px-6 rounded-2xl text-left flex justify-between items-center transition-all ${format(displayDate, 'yyyyMMdd') === format(date, 'yyyyMMdd') ? 'bg-foreground text-background font-bold' : 'bg-foreground/5 hover:bg-foreground/10'}`}>
-              <span>{format(date, 'yyyy년 MM월 dd일', { locale: ko })}</span>
-              <span className="text-xs opacity-50">{format(date, 'EEEE', { locale: ko })}</span>
-            </button>
-          ))}
+        <div className="flex flex-col space-y-4">
+          <div className="flex justify-between items-center px-2">
+            <h4 className="text-lg font-bold">{format(viewDate, 'yyyy년 M월', { locale: ko })}</h4>
+            <div className="flex gap-2">
+              <button onClick={() => setViewDate(subMonths(viewDate, 1))} className="p-2 rounded-full hover:bg-foreground/5 transition-all">←</button>
+              <button onClick={() => setViewDate(addMonths(viewDate, 1))} className="p-2 rounded-full hover:bg-foreground/5 transition-all">→</button>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1">
+            {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
+              <div key={day} className="h-10 flex items-center justify-center text-[10px] font-bold text-foreground/30 uppercase tracking-widest">{day}</div>
+            ))}
+            {(() => {
+              const startPos = startOfWeek(startOfMonth(viewDate));
+              const endPos = endOfWeek(endOfMonth(viewDate));
+              const days = eachDayOfInterval({ start: startPos, end: endPos });
+              const today = startOfDay(new Date());
+
+              return days.map((date, i) => {
+                const isSelected = isSameDay(date, displayDate);
+                const isCurrentMonth = isSameMonth(date, viewDate);
+                const isPast = isBefore(date, today);
+                const isPossible = !isPast && isBefore(date, addDays(today, 31));
+
+                return (
+                  <button
+                    key={i}
+                    disabled={!isPossible}
+                    onClick={() => {
+                      setDisplayDate(date);
+                      setShowDatePicker(false);
+                    }}
+                    className={`h-12 w-full rounded-xl flex flex-col items-center justify-center text-sm transition-all
+                      ${isSelected ? 'bg-foreground text-background font-bold scale-95 shadow-lg' : 
+                        isPossible ? 'hover:bg-foreground/5 text-foreground' : 'text-foreground/10 cursor-not-allowed'}
+                      ${!isCurrentMonth && isPossible ? 'opacity-30' : ''}
+                    `}
+                  >
+                    <span>{format(date, 'd')}</span>
+                  </button>
+                );
+              });
+            })()}
+          </div>
+          <div className="pt-4 text-[10px] font-bold text-foreground/20 uppercase tracking-widest text-center">
+            최대 31일 후까지 조회 가능합니다.
+          </div>
         </div>
       </Modal>
 
