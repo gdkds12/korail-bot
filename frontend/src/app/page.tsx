@@ -257,7 +257,7 @@ export default function Home() {
 
       <Modal isOpen={showDatePicker} onClose={() => setShowDatePicker(false)} title="날짜 선택">
         <div className="grid grid-cols-1 gap-2">
-          {Array.from({ length: 15 }, (_, i) => addDays(new Date(), i)).map((date) => (
+          {Array.from({ length: 31 }, (_, i) => addDays(new Date(), i)).map((date) => (
             <button key={date.toISOString()} onClick={() => { setDisplayDate(date); setShowDatePicker(false); }}
               className={`py-4 px-6 rounded-2xl text-left flex justify-between items-center transition-all ${format(displayDate, 'yyyyMMdd') === format(date, 'yyyyMMdd') ? 'bg-foreground text-background font-bold' : 'bg-foreground/5 hover:bg-foreground/10'}`}>
               <span>{format(date, 'yyyy년 MM월 dd일', { locale: ko })}</span>
