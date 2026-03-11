@@ -23,6 +23,45 @@ db = firestore.client()
 # Global state for managing threads
 active_tasks: Dict[str, Any] = {}
 
+
+def build_proxy_url_from_env():
+    host = os.getenv('IPROYAL_HOST', '').strip()
+    port = os.getenv('IPROYAL_PORT', '').strip()
+    user = os.getenv('IPROYAL_USER', '').strip()
+    password = os.getenv('IPROYAL_PASS', '').strip()
+
+    explicit_http = os.getenv('HTTP_PROXY', '').strip()
+    explicit_https = os.getenv('HTTPS_PROXY', '').strip()
+
+    if explicit_http or explicit_https:
+        return explicit_http or explicit_https
+
+    if host and port and user and password:
+        return f"http://{user}:{password}@{host}:{port}"
+
+    return ''
+
+
+def configure_korail_proxy():
+    proxy_url = build_proxy_url_from_env()
+    if not proxy_url:
+        log('Proxy: disabled')
+        return
+
+    # korail2 uses a shared requests session (Korail._session)
+    Korail._session.proxies.update({
+        'http': proxy_url,
+        'https': proxy_url,
+    })
+    Korail._session.trust_env = True
+
+    safe_host = os.getenv('IPROYAL_HOST', '')
+    safe_port = os.getenv('IPROYAL_PORT', '')
+    if safe_host and safe_port:
+        log(f'Proxy: enabled ({safe_host}:{safe_port})')
+    else:
+        log('Proxy: enabled (HTTP_PROXY/HTTPS_PROXY)')
+
 def log(msg):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
@@ -288,6 +327,7 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
 def main():
     log("🚀 Korail Bot Backend Started")
     log(f"Project: {db.project}")
+    configure_korail_proxy()
     log("Listening for changes in Firestore...")
 
     db.collection('tasks').on_snapshot(on_tasks_snapshot)
