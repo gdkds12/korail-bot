@@ -63,6 +63,30 @@ def get_user_credentials(uid):
         log(f"Error fetching credentials for {uid}: {e}")
         return None
 
+def classify_korail_error(err_text: str):
+    text = (err_text or "").strip()
+    lower = text.lower()
+    if "macro error" in lower:
+        return {
+            "error_code": "MACRO_BLOCK",
+            "user_message": "코레일 서버에서 자동화 요청을 차단했습니다(MACRO ERROR). 잠시 후 재시도하거나 코레일 앱 최신 버전/공식 채널을 확인해 주세요.",
+        }
+    if "err299929" in lower:
+        return {
+            "error_code": "SPECIAL_PERIOD",
+            "user_message": "명절 특별수송 기간/사전예매 조건으로 조회가 제한되었습니다. 코레일 공지사항을 확인해 주세요.",
+        }
+    if "로그인" in text and "필요" in text:
+        return {
+            "error_code": "LOGIN_REQUIRED",
+            "user_message": "코레일 계정 로그인 상태를 확인해 주세요.",
+        }
+    return {
+        "error_code": "UNKNOWN",
+        "user_message": text or "조회 중 알 수 없는 오류가 발생했습니다.",
+    }
+
+
 def process_search_request(doc_snapshot, changes, read_time):
     for change in changes:
         if change.type.name == 'ADDED':
@@ -118,8 +142,15 @@ def process_search_request(doc_snapshot, changes, read_time):
                 log(f"Search completed for {doc.id}")
 
             except Exception as e:
-                log(f"Search error: {e}")
-                doc.reference.update({'status': 'ERROR', 'error': str(e)})
+                err_text = str(e)
+                classified = classify_korail_error(err_text)
+                log(f"Search error [{classified['error_code']}]: {err_text}")
+                doc.reference.update({
+                    'status': 'ERROR',
+                    'error': err_text,
+                    'error_code': classified['error_code'],
+                    'user_message': classified['user_message'],
+                })
 
 def run_reservation_task(task_id, task_data, stop_event):
     log(f"Started worker for task {task_id}")

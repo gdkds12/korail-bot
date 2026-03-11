@@ -51,7 +51,8 @@ export default function Home() {
   // Auto-hide message
   useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => setMessage(''), 3000);
+      const timeout = message.includes('코레일 서버 차단') ? 9000 : 3000;
+      const timer = setTimeout(() => setMessage(''), timeout);
       return () => clearTimeout(timer);
     }
   }, [message]);
@@ -162,7 +163,12 @@ export default function Home() {
           setLoading(false);
           unsubscribe();
         } else if (data && data.status === 'ERROR') {
-          setMessage(`❌ 오류: ${data.error}`);
+          const macroBlocked = data.error_code === 'MACRO_BLOCK' || String(data.error || '').toLowerCase().includes('macro error');
+          if (macroBlocked) {
+            setMessage(`🚫 코레일 서버 차단: ${data.user_message || data.error || 'MACRO ERROR'}`);
+          } else {
+            setMessage(`❌ 오류: ${data.user_message || data.error || '조회 실패'}`);
+          }
           setLoading(false);
           unsubscribe();
         }
