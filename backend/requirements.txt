@@ -1,3 +1,4 @@
-korail2
+korail2-ncard
 firebase-admin
-requests
+requests[socks]
+SRTrain

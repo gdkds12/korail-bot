@@ -12,23 +12,35 @@ import { ko } from 'date-fns/locale';
 
 const VAPID_KEY = "BPNkW11fORIDrPxfHtKT8QM65DSp6jfW2gHrKBy-Dmtxbzd52vq4Lrf1FZaPCEwPNC8fbfGCSFjGYn5ReHhI_fQ";
 
-const MAJOR_STATIONS = [
-  '서울', '용산', '영등포', '광명', '수원', '천안아산', '오송', '대전', '김천구미', '동대구', '신경주', '울산', '부산',
-  '포항', '마산', '창원중앙', '진주', '익산', '전주', '광주송정', '목포', '순천', '여수EXPO', '강릉', '평창', '안동'
+const KTX_STATIONS = [
+  '서울', '용산', '영등포', '광명', '수원', '천안아산', '오송', '대전', '김천구미', '동대구',
+  '신경주', '울산', '부산', '포항', '마산', '창원중앙', '진주', '익산', '전주',
+  '광주송정', '목포', '순천', '여수EXPO', '강릉', '평창', '안동'
 ].sort();
+
+const SRT_STATIONS = [
+  '수서', '동탄', '평택지제', '천안아산', '오송', '대전', '김천구미', '동대구',
+  '신경주', '울산(통도사)', '부산', '포항', '마산', '창원', '창원중앙', '진주',
+  '광주송정', '목포', '순천', '여수EXPO'
+].sort();
+
+type TrainType = 'KTX' | 'SRT';
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
-  
+
   // States
   const [fcmToken, setFcmToken] = useState('');
   const [korailId, setKorailId] = useState('');
   const [korailPw, setKorailPw] = useState('');
+  const [srtId, setSrtId] = useState('');
+  const [srtPw, setSrtPw] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('search');
-  
+
   // Search params
+  const [trainType, setTrainType] = useState<TrainType>('KTX');
   const [dep, setDep] = useState('서울');
   const [arr, setArr] = useState('부산');
   const [displayDate, setDisplayDate] = useState(new Date());
@@ -36,28 +48,38 @@ export default function Home() {
   const [time, setTime] = useState('06');
   const [interval, setInterval] = useState(3.0);
   const [trains, setTrains] = useState<any[]>([]);
-  
+
   // UI States
   const [showStationPicker, setShowStationPicker] = useState<'dep' | 'arr' | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  
+
   // Tasks from Firestore
   const [tasks, setTasks] = useState<any>({});
 
-  // Reveal effect
   const { ref: heroRef, isVisible: heroVisible } = useReveal(0.1);
 
-  // Auto-hide message
+  // Switch train type and reset stations to valid defaults
+  const handleTrainTypeChange = (type: TrainType) => {
+    setTrainType(type);
+    setTrains([]);
+    if (type === 'SRT') {
+      setDep('수서');
+      setArr('부산');
+    } else {
+      setDep('서울');
+      setArr('부산');
+    }
+  };
+
   useEffect(() => {
     if (message) {
-      const timeout = message.includes('코레일 서버 차단') ? 9000 : 3000;
+      const timeout = message.includes('차단') ? 9000 : 3000;
       const timer = setTimeout(() => setMessage(''), timeout);
       return () => clearTimeout(timer);
     }
   }, [message]);
 
-  // Auth & Initial Data Loading
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
@@ -75,6 +97,8 @@ export default function Home() {
           const data = userSnap.data();
           setKorailId(data.korailId || '');
           setKorailPw(data.korailPw || '');
+          setSrtId(data.srtId || '');
+          setSrtPw(data.srtPw || '');
           setFcmToken(data.fcmToken || '');
           if (data.interval) setInterval(data.interval);
         }
@@ -82,9 +106,7 @@ export default function Home() {
         const q = query(collection(db, 'tasks'), where('uid', '==', u.uid));
         const unsubscribeTasks = onSnapshot(q, (snapshot) => {
           const newTasks: any = {};
-          snapshot.forEach((doc) => {
-            newTasks[doc.id] = { id: doc.id, ...doc.data() };
-          });
+          snapshot.forEach((doc) => { newTasks[doc.id] = { id: doc.id, ...doc.data() }; });
           setTasks(newTasks);
         });
         return () => unsubscribeTasks();
@@ -113,7 +135,7 @@ export default function Home() {
     if (e) e.preventDefault();
     if (!user) return;
     try {
-      await setDoc(doc(db, 'users', user.uid), { korailId, korailPw, fcmToken, interval }, { merge: true });
+      await setDoc(doc(db, 'users', user.uid), { korailId, korailPw, srtId, srtPw, fcmToken, interval }, { merge: true });
       setMessage('✅ 설정이 저장되었습니다.');
     } catch (e) { setMessage('⚠️ 저장 실패'); }
   };
@@ -147,6 +169,7 @@ export default function Home() {
     try {
       const reqRef = await addDoc(collection(db, 'search_requests'), {
         uid: user.uid,
+        trainType,
         dep,
         arr,
         date: format(displayDate, 'yyyyMMdd'),
@@ -164,21 +187,16 @@ export default function Home() {
           unsubscribe();
         } else if (data && data.status === 'ERROR') {
           const macroBlocked = data.error_code === 'MACRO_BLOCK' || String(data.error || '').toLowerCase().includes('macro error');
-          if (macroBlocked) {
-            setMessage(`🚫 코레일 서버 차단: ${data.user_message || data.error || 'MACRO ERROR'}`);
-          } else {
-            setMessage(`❌ 오류: ${data.user_message || data.error || '조회 실패'}`);
-          }
+          setMessage(macroBlocked
+            ? `🚫 서버 차단: ${data.user_message || data.error || 'MACRO ERROR'}`
+            : `❌ 오류: ${data.user_message || data.error || '조회 실패'}`);
           setLoading(false);
           unsubscribe();
         }
       });
 
       setTimeout(() => {
-        setLoading((currentLoading) => {
-          if (currentLoading) setMessage('⚠️ 응답이 지연되고 있습니다...');
-          return currentLoading;
-        });
+        setLoading((cur) => { if (cur) setMessage('⚠️ 응답이 지연되고 있습니다...'); return cur; });
       }, 15000);
     } catch (e) {
       setMessage('⚠️ 요청 실패');
@@ -188,16 +206,21 @@ export default function Home() {
 
   const handleReserveLoop = async (train: any) => {
     if (!user) return;
-    if (!korailId || !korailPw) {
+    if (trainType === 'SRT' && (!srtId || !srtPw)) {
+      alert('⚠️ 먼저 설정 탭에서 SRT 계정을 저장해주세요.');
+      setActiveTab('settings');
+      return;
+    }
+    if (trainType === 'KTX' && (!korailId || !korailPw)) {
       alert('⚠️ 먼저 설정 탭에서 코레일 계정을 저장해주세요.');
       setActiveTab('settings');
       return;
     }
     try {
       await addDoc(collection(db, 'tasks'), {
-        uid: user.uid, train_no: train.train_no, train_name: train.train_name,
+        uid: user.uid, trainType, train_no: train.train_no, train_name: train.train_name,
         dep_date: train.dep_date, dep_time: train.dep_time, dep_name: train.dep_name,
-        arr_name: train.arr_name, interval: interval, is_running: true,
+        arr_name: train.arr_name, interval, is_running: true,
         status: 'RUNNING', attempts: 0, createdAt: new Date(), last_check: '-'
       });
       setMessage('🚀 예약 작업이 추가되었습니다.');
@@ -217,7 +240,8 @@ export default function Home() {
     } catch (e) { setMessage('⚠️ 삭제 실패'); }
   };
 
-  // Picker Modals
+  const stations = trainType === 'SRT' ? SRT_STATIONS : KTX_STATIONS;
+
   const Modal = ({ isOpen, onClose, title, children }: any) => {
     if (!isOpen) return null;
     return (
@@ -227,9 +251,7 @@ export default function Home() {
             <h3 className="text-2xl font-light tracking-tight">{title}</h3>
             <button onClick={onClose} className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center text-xl hover:bg-foreground/10 transition-all">✕</button>
           </div>
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            {children}
-          </div>
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">{children}</div>
         </div>
       </div>
     );
@@ -239,8 +261,8 @@ export default function Home() {
     return (
       <main className="min-h-screen flex items-center justify-center p-6 bg-background overflow-hidden text-black">
         <div ref={heroRef} className={`w-full max-w-xl text-center transition-all duration-1000 ${heroVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
-          <h1 className="text-6xl md:text-8xl font-light tracking-tighter mb-4">코레일<span className="text-foreground/30">봇</span></h1>
-          <p className="text-lg md:text-2xl font-light text-foreground/60 mb-12 tracking-tight">가장 빠르고 편한 기차 예매 자동화</p>
+          <h1 className="text-6xl md:text-8xl font-light tracking-tighter mb-4">기차<span className="text-foreground/30">봇</span></h1>
+          <p className="text-lg md:text-2xl font-light text-foreground/60 mb-12 tracking-tight">KTX · SRT 자동 예매</p>
           <div className="flex flex-col gap-4 items-center px-6">
             <MagneticButton size="lg" onClick={handleLogin} className="w-full max-w-xs py-6 text-base">Google 계정으로 시작하기</MagneticButton>
           </div>
@@ -252,16 +274,22 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background pb-24 font-sans selection:bg-foreground selection:text-background text-black">
-      {/* Pickers */}
+      {/* Station Picker */}
       <Modal isOpen={!!showStationPicker} onClose={() => setShowStationPicker(null)} title={showStationPicker === 'dep' ? '출발역' : '도착역'}>
+        <div className="mb-4 flex gap-2 justify-center">
+          <span className={`px-3 py-1 rounded-full text-xs font-bold ${trainType === 'KTX' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+            {trainType} 역 목록
+          </span>
+        </div>
         <div className="grid grid-cols-3 gap-3">
-          {MAJOR_STATIONS.map((s) => (
+          {stations.map((s) => (
             <button key={s} onClick={() => { if (showStationPicker === 'dep') setDep(s); else setArr(s); setShowStationPicker(null); }}
               className={`py-4 rounded-2xl text-sm transition-all ${(showStationPicker === 'dep' ? dep : arr) === s ? 'bg-foreground text-background font-bold' : 'bg-foreground/5 hover:bg-foreground/10'}`}>{s}</button>
           ))}
         </div>
       </Modal>
 
+      {/* Date Picker */}
       <Modal isOpen={showDatePicker} onClose={() => setShowDatePicker(false)} title="날짜 선택">
         <div className="flex flex-col space-y-4">
           <div className="flex justify-between items-center px-2">
@@ -271,7 +299,6 @@ export default function Home() {
               <button onClick={() => setViewDate(addMonths(viewDate, 1))} className="p-2 rounded-full hover:bg-foreground/5 transition-all">→</button>
             </div>
           </div>
-          
           <div className="grid grid-cols-7 gap-1">
             {['일', '월', '화', '수', '목', '금', '토'].map((day) => (
               <div key={day} className="h-10 flex items-center justify-center text-[10px] font-bold text-foreground/30 uppercase tracking-widest">{day}</div>
@@ -281,39 +308,28 @@ export default function Home() {
               const endPos = endOfWeek(endOfMonth(viewDate));
               const days = eachDayOfInterval({ start: startPos, end: endPos });
               const today = startOfDay(new Date());
-
               return days.map((date, i) => {
                 const isSelected = isSameDay(date, displayDate);
                 const isCurrentMonth = isSameMonth(date, viewDate);
                 const isPast = isBefore(date, today);
                 const isPossible = !isPast && isBefore(date, addDays(today, 31));
-
                 return (
-                  <button
-                    key={i}
-                    disabled={!isPossible}
-                    onClick={() => {
-                      setDisplayDate(date);
-                      setShowDatePicker(false);
-                    }}
+                  <button key={i} disabled={!isPossible}
+                    onClick={() => { setDisplayDate(date); setShowDatePicker(false); }}
                     className={`h-12 w-full rounded-xl flex flex-col items-center justify-center text-sm transition-all
-                      ${isSelected ? 'bg-foreground text-background font-bold scale-95 shadow-lg' : 
-                        isPossible ? 'hover:bg-foreground/5 text-foreground' : 'text-foreground/10 cursor-not-allowed'}
-                      ${!isCurrentMonth && isPossible ? 'opacity-30' : ''}
-                    `}
-                  >
+                      ${isSelected ? 'bg-foreground text-background font-bold scale-95 shadow-lg' : isPossible ? 'hover:bg-foreground/5 text-foreground' : 'text-foreground/10 cursor-not-allowed'}
+                      ${!isCurrentMonth && isPossible ? 'opacity-30' : ''}`}>
                     <span>{format(date, 'd')}</span>
                   </button>
                 );
               });
             })()}
           </div>
-          <div className="pt-4 text-[10px] font-bold text-foreground/20 uppercase tracking-widest text-center">
-            최대 31일 후까지 조회 가능합니다.
-          </div>
+          <div className="pt-4 text-[10px] font-bold text-foreground/20 uppercase tracking-widest text-center">최대 31일 후까지 조회 가능합니다.</div>
         </div>
       </Modal>
 
+      {/* Time Picker */}
       <Modal isOpen={showTimePicker} onClose={() => setShowTimePicker(false)} title="시간 선택">
         <div className="grid grid-cols-4 gap-3">
           {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map((h) => (
@@ -322,7 +338,7 @@ export default function Home() {
           ))}
         </div>
       </Modal>
-      
+
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-foreground/5">
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-center h-20 md:h-24">
@@ -345,20 +361,34 @@ export default function Home() {
                 <h2 className="text-3xl md:text-5xl font-light tracking-tighter">열차 검색</h2>
                 <p className="text-sm md:text-base text-foreground/40 font-light">여정을 계획하고 예약을 시작하세요.</p>
               </div>
-              
+
               <form onSubmit={handleSearch} className="flex flex-col gap-6 bg-foreground/[0.03] p-6 md:p-8 rounded-[2rem] border border-foreground/5 w-full shadow-sm">
+                {/* Train Type Toggle */}
+                <div className="flex gap-2 bg-foreground/5 p-1 rounded-2xl">
+                  {(['KTX', 'SRT'] as TrainType[]).map((type) => (
+                    <button key={type} type="button" onClick={() => handleTrainTypeChange(type)}
+                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${trainType === type
+                        ? type === 'KTX' ? 'bg-blue-600 text-white shadow-md' : 'bg-orange-500 text-white shadow-md'
+                        : 'text-foreground/40 hover:text-foreground'}`}>
+                      {type === 'KTX' ? '🚄 KTX' : '🚅 SRT'}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1 flex flex-col items-center">
                     <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest mb-2">출발</label>
-                    <button type="button" onClick={() => setShowStationPicker('dep')} className="text-2xl md:text-4xl font-bold hover:text-blue-600 transition-colors">{dep}</button>
+                    <button type="button" onClick={() => setShowStationPicker('dep')}
+                      className={`text-2xl md:text-4xl font-bold transition-colors ${trainType === 'KTX' ? 'hover:text-blue-600' : 'hover:text-orange-500'}`}>{dep}</button>
                   </div>
                   <div className="pt-6"><span className="text-foreground/10 text-3xl font-light">→</span></div>
                   <div className="flex-1 flex flex-col items-center">
                     <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest mb-2">도착</label>
-                    <button type="button" onClick={() => setShowStationPicker('arr')} className="text-2xl md:text-4xl font-bold hover:text-blue-600 transition-colors">{arr}</button>
+                    <button type="button" onClick={() => setShowStationPicker('arr')}
+                      className={`text-2xl md:text-4xl font-bold transition-colors ${trainType === 'KTX' ? 'hover:text-blue-600' : 'hover:text-orange-500'}`}>{arr}</button>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-foreground/5">
                   <button type="button" onClick={() => setShowDatePicker(true)} className="flex flex-col items-start p-4 bg-background rounded-2xl border border-foreground/5 hover:bg-foreground/[0.02] transition-all">
                     <label className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest mb-1">날짜</label>
@@ -370,7 +400,10 @@ export default function Home() {
                   </button>
                 </div>
 
-                <MagneticButton type="submit" disabled={loading} className="w-full py-5 text-lg shadow-lg">{loading ? '조회 중...' : '열차 조회하기'}</MagneticButton>
+                <MagneticButton type="submit" disabled={loading}
+                  className={`w-full py-5 text-lg shadow-lg ${trainType === 'SRT' ? 'bg-orange-500 hover:bg-orange-600' : ''}`}>
+                  {loading ? '조회 중...' : `${trainType} 열차 조회`}
+                </MagneticButton>
               </form>
             </div>
 
@@ -378,7 +411,9 @@ export default function Home() {
               {trains.map((train, i) => (
                 <div key={i} className="group bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] p-6 md:p-8 transition-all hover:bg-foreground/[0.04]">
                   <div className="flex justify-between items-start mb-6">
-                    <div className="px-3 py-1 rounded-full bg-foreground/5 text-[10px] font-bold tracking-widest text-foreground/40 uppercase">{train.train_name}</div>
+                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase ${trainType === 'SRT' ? 'bg-orange-50 text-orange-500' : 'bg-blue-50 text-blue-500'}`}>
+                      {train.train_name}
+                    </div>
                     <div className={`text-xs font-bold ${train.reserve_possible ? 'text-green-600' : 'text-foreground/20'}`}>{train.general_seat}</div>
                   </div>
                   <div className="flex items-center gap-4 mb-8">
@@ -396,6 +431,7 @@ export default function Home() {
               {trains.length === 0 && !loading && <div className="col-span-full py-20 text-center text-foreground/20 font-light italic">조회된 열차가 없습니다.</div>}
             </div>
           </div>
+
         ) : activeTab === 'manage' ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="border-b border-foreground/10 pb-8">
@@ -414,7 +450,14 @@ export default function Home() {
                           {task.status === 'SUCCESS' ? '✓' : '⚡'}
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase block mb-1">{task.status}</span>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase">{task.status}</span>
+                            {task.trainType && (
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${task.trainType === 'SRT' ? 'bg-orange-100 text-orange-500' : 'bg-blue-100 text-blue-500'}`}>
+                                {task.trainType}
+                              </span>
+                            )}
+                          </div>
                           <h3 className="text-2xl md:text-3xl font-light tracking-tight">{task.train_name}</h3>
                         </div>
                       </div>
@@ -423,7 +466,8 @@ export default function Home() {
                         <span className="text-xs font-bold tracking-widest text-foreground/30 uppercase">회 시도</span>
                       </div>
                       <div className="flex gap-2">
-                        {task.is_running ? <MagneticButton variant="ghost" onClick={() => handleStopTask(task.id)} className="text-red-500 px-8 py-4">정지</MagneticButton>
+                        {task.is_running
+                          ? <MagneticButton variant="ghost" onClick={() => handleStopTask(task.id)} className="text-red-500 px-8 py-4">정지</MagneticButton>
                           : <MagneticButton variant="ghost" onClick={() => handleDeleteTask(task.id)} className="text-foreground/40 px-8 py-4">삭제</MagneticButton>}
                       </div>
                     </div>
@@ -435,6 +479,7 @@ export default function Home() {
               </div>
             )}
           </div>
+
         ) : (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-2xl mx-auto">
             <div className="text-center space-y-4 mb-8">
@@ -443,29 +488,63 @@ export default function Home() {
             </div>
             <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[3rem] p-8 md:p-12 space-y-12">
               <form onSubmit={saveSettings} className="space-y-10">
+
+                {/* KTX Account */}
                 <div className="space-y-4">
-                  <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">코레일 계정</label>
-                  <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl p-5 text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="회원번호" />
-                  <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)} className="w-full bg-foreground/5 border-none rounded-xl p-5 text-lg font-light focus:ring-2 focus:ring-foreground/10 transition-all" placeholder="비밀번호" />
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-600">KTX</span>
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase">코레일 계정</label>
+                  </div>
+                  <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)}
+                    className="w-full bg-foreground/5 border-none rounded-xl p-5 text-lg font-light focus:ring-2 focus:ring-blue-200 transition-all" placeholder="회원번호" />
+                  <input type="password" value={korailPw} onChange={e => setKorailPw(e.target.value)}
+                    className="w-full bg-foreground/5 border-none rounded-xl p-5 text-lg font-light focus:ring-2 focus:ring-blue-200 transition-all" placeholder="비밀번호" />
                 </div>
+
+                {/* SRT Account */}
+                <div className="space-y-4 pt-8 border-t border-foreground/5">
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-500">SRT</span>
+                    <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase">SRT 계정</label>
+                  </div>
+                  <input type="text" value={srtId} onChange={e => setSrtId(e.target.value)}
+                    className="w-full bg-foreground/5 border-none rounded-xl p-5 text-lg font-light focus:ring-2 focus:ring-orange-200 transition-all" placeholder="회원번호 또는 이메일" />
+                  <input type="password" value={srtPw} onChange={e => setSrtPw(e.target.value)}
+                    className="w-full bg-foreground/5 border-none rounded-xl p-5 text-lg font-light focus:ring-2 focus:ring-orange-200 transition-all" placeholder="비밀번호" />
+                </div>
+
+                {/* Interval */}
                 <div className="space-y-4 pt-8 border-t border-foreground/5">
                   <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">매크로 빈도</label>
                   <div className="flex justify-between items-center mb-2"><span className="text-sm font-light">조회 간격</span><span className="text-lg font-bold">{interval}초</span></div>
-                  <input type="range" min="0.5" max="10" step="0.1" value={interval} onChange={e => setInterval(parseFloat(e.target.value))} className="w-full h-2 bg-foreground/10 rounded-lg appearance-none cursor-pointer accent-foreground" />
+                  <input type="range" min="0.5" max="10" step="0.1" value={interval} onChange={e => setInterval(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-foreground/10 rounded-lg appearance-none cursor-pointer accent-foreground" />
                 </div>
+
+                {/* Push */}
                 <div className="pt-8 border-t border-foreground/5 space-y-4">
                   <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase ml-2">알림</label>
-                  <MagneticButton type="button" variant={fcmToken ? 'secondary' : 'primary'} onClick={handleEnablePush} className="w-full py-5">{fcmToken ? '✓ 앱 푸시 활성화됨' : '앱 푸시 권한 요청'}</MagneticButton>
+                  <MagneticButton type="button" variant={fcmToken ? 'secondary' : 'primary'} onClick={handleEnablePush} className="w-full py-5">
+                    {fcmToken ? '✓ 앱 푸시 활성화됨' : '앱 푸시 권한 요청'}
+                  </MagneticButton>
                   {fcmToken && <button type="button" onClick={handleTestPush} className="w-full text-[10px] font-bold tracking-widest text-foreground/20 uppercase hover:text-foreground transition-all">알림 테스트 (10초 대기)</button>}
                 </div>
+
                 <MagneticButton type="submit" className="w-full py-6 text-lg shadow-xl">설정 저장</MagneticButton>
               </form>
-              <div className="pt-8 border-t border-foreground/5 flex justify-center"><button onClick={handleLogout} className="text-xs font-bold tracking-widest text-red-500/40 hover:text-red-500 uppercase">로그아웃</button></div>
+              <div className="pt-8 border-t border-foreground/5 flex justify-center">
+                <button onClick={handleLogout} className="text-xs font-bold tracking-widest text-red-500/40 hover:text-red-500 uppercase">로그아웃</button>
+              </div>
             </div>
           </div>
         )}
       </div>
-      {message && <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500 w-[90%] md:w-auto text-center"><div className="bg-foreground text-background px-8 py-4 rounded-full text-xs font-bold tracking-widest uppercase shadow-2xl backdrop-blur-xl">{message}</div></div>}
+
+      {message && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500 w-[90%] md:w-auto text-center">
+          <div className="bg-foreground text-background px-8 py-4 rounded-full text-xs font-bold tracking-widest uppercase shadow-2xl backdrop-blur-xl">{message}</div>
+        </div>
+      )}
     </main>
   );
 }
