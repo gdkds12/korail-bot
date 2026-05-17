@@ -37,15 +37,30 @@ def log(msg):
 def send_fcm_notification(token, title, body):
     if not token:
         return
+    proxy_vars = {k: os.environ.pop(k, None) for k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy')}
     try:
         message = messaging.Message(
             notification=messaging.Notification(title=title, body=body),
+            android=messaging.AndroidConfig(
+                priority='high',
+                notification=messaging.AndroidNotification(
+                    priority='high',
+                    default_vibrate_timings=True,
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                headers={'apns-priority': '10'},
+            ),
             token=token,
         )
         response = messaging.send(message)
         log(f"FCM notification sent: {response}")
     except Exception as e:
         log(f"FCM error: {e}")
+    finally:
+        for k, v in proxy_vars.items():
+            if v is not None:
+                os.environ[k] = v
 
 def send_telegram_msg(token, chat_id, message):
     if not token or not chat_id:
@@ -272,6 +287,11 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
                 threading.Thread(target=handle_test_notification, args=(task_id, data), daemon=True).start()
                 continue
 
+            if task_type == 'FETCH_TICKETS' and status == 'PENDING':
+                db.collection('tasks').document(task_id).update({'status': 'RUNNING'})
+                threading.Thread(target=handle_fetch_tickets, args=(task_id, data), daemon=True).start()
+                continue
+
             if is_running and status == 'RUNNING':
                 if task_id not in active_tasks:
                     stop_event = threading.Event()
@@ -292,6 +312,79 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
                 active_tasks[task_id]['stop_event'].set()
                 del active_tasks[task_id]
                 log(f"Task removed: {task_id}")
+
+
+def handle_fetch_tickets(task_id, task_data):
+    log(f"Fetching tickets for task: {task_id}")
+    uid = task_data.get('uid')
+    user_data = get_user_credentials(uid)
+    if not user_data:
+        db.collection('tasks').document(task_id).update({'status': 'ERROR', 'error': '사용자 정보 없음', 'is_running': False})
+        return
+
+    ktx_tickets, srt_tickets, errors = [], [], []
+
+    if user_data.get('korailId') and user_data.get('korailPw'):
+        try:
+            korail = Korail(user_data['korailId'], user_data['korailPw'])
+            for r in korail.reservations():
+                dep_t = getattr(r, 'dep_time', '') or ''
+                arr_t = getattr(r, 'arr_time', '') or ''
+                buy_dt = getattr(r, 'buy_limit_date', '')
+                buy_tm = getattr(r, 'buy_limit_time', '')
+                ktx_tickets.append({
+                    'type': 'KTX',
+                    'rsv_id': getattr(r, 'rsv_id', ''),
+                    'train_name': f"{getattr(r, 'train_type_name', 'KTX')} {getattr(r, 'train_no', '')}".strip(),
+                    'dep_name': getattr(r, 'dep_name', ''),
+                    'arr_name': getattr(r, 'arr_name', ''),
+                    'dep_date': getattr(r, 'dep_date', ''),
+                    'dep_time': dep_t,
+                    'arr_time': arr_t,
+                    'price': getattr(r, 'price', 0),
+                    'seat_count': getattr(r, 'seat_no_count', 1),
+                    'buy_limit': f"{buy_dt} {buy_tm}".strip() if buy_dt else '',
+                    'paid': not bool(buy_dt),
+                })
+        except Exception as e:
+            errors.append(f"KTX: {str(e)[:80]}")
+            log(f"KTX ticket error: {e}")
+
+    if user_data.get('srtId') and user_data.get('srtPw'):
+        try:
+            srt = SRT(user_data['srtId'], user_data['srtPw'])
+            for r in srt.get_reservations():
+                seat_info = ''
+                try:
+                    if r._tickets:
+                        seat_info = ', '.join(f"{t.car}호차 {t.seat}" for t in r._tickets)
+                except: pass
+                srt_tickets.append({
+                    'type': 'SRT',
+                    'rsv_id': str(r.reservation_number),
+                    'train_name': f"{r.train_name} {r.train_number}".strip(),
+                    'dep_name': r.dep_station_name,
+                    'arr_name': r.arr_station_name,
+                    'dep_date': r.dep_date,
+                    'dep_time': r.dep_time,
+                    'arr_time': r.arr_time,
+                    'price': int(r.total_cost or 0),
+                    'seat_count': int(r.seat_count or 1),
+                    'seat_info': seat_info,
+                    'paid': r.paid,
+                    'buy_limit': f"{r.payment_date} {r.payment_time}".strip() if not r.paid else '',
+                })
+        except Exception as e:
+            errors.append(f"SRT: {str(e)[:80]}")
+            log(f"SRT ticket error: {e}")
+
+    db.collection('tasks').document(task_id).update({
+        'status': 'COMPLETED', 'is_running': False,
+        'ktx': ktx_tickets, 'srt': srt_tickets, 'errors': errors,
+        'processedAt': datetime.now(),
+    })
+    log(f"Tickets fetched: KTX={len(ktx_tickets)}, SRT={len(srt_tickets)}")
+
 
 
 def main():

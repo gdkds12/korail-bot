@@ -202,10 +202,11 @@ export default function Home() {
     setTicketsLoading(true);
     setTickets(null);
     try {
-      const reqRef = await addDoc(collection(db, 'ticket_requests'), {
+      const reqRef = await addDoc(collection(db, 'tasks'), {
         uid: user.uid, createdAt: new Date(), status: 'PENDING',
+        type: 'FETCH_TICKETS', is_running: true,
       });
-      const unsubscribe = onSnapshot(doc(db, 'ticket_requests', reqRef.id), (snap) => {
+      const unsubscribe = onSnapshot(doc(db, 'tasks', reqRef.id), (snap) => {
         const data = snap.data();
         if (data?.status === 'COMPLETED') {
           setTickets({ ktx: data.ktx || [], srt: data.srt || [] });
