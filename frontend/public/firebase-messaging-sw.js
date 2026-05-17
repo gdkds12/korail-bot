@@ -14,10 +14,13 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  
-  const notificationTitle = payload.notification ? payload.notification.title : (payload.data ? payload.data.title : "코레일 봇 알림");
+
+  // notification 페이로드가 있으면 Firebase SDK가 자동으로 표시하므로 중복 방지
+  if (payload.notification) return;
+
+  const notificationTitle = payload.data?.title || "코레일 봇 알림";
   const notificationOptions = {
-    body: payload.notification ? payload.notification.body : (payload.data ? payload.data.body : ""),
+    body: payload.data?.body || "",
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-192x192.png',
   };
