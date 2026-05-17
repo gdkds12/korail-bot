@@ -324,17 +324,23 @@ def handle_fetch_tickets(task_id, task_data):
 
     ktx_tickets, srt_tickets, errors = [], [], []
 
+    log(f"Ticket fetch - korailId set: {bool(user_data.get('korailId'))}, srtId set: {bool(user_data.get('srtId'))}")
     if user_data.get('korailId') and user_data.get('korailPw'):
         try:
+            log(f"KTX login attempt: {user_data['korailId'][:4]}***")
             korail = Korail(user_data['korailId'], user_data['korailPw'])
-            for r in korail.reservations():
+
+            def _ktx_item(r, paid):
                 dep_t = getattr(r, 'dep_time', '') or ''
                 arr_t = getattr(r, 'arr_time', '') or ''
-                buy_dt = getattr(r, 'buy_limit_date', '')
-                buy_tm = getattr(r, 'buy_limit_time', '')
-                ktx_tickets.append({
+                car_no = getattr(r, 'car_no', '') or ''
+                seat_no = getattr(r, 'seat_no', '') or ''
+                seat_info = f"{car_no}호차 {seat_no}".strip() if car_no or seat_no else ''
+                buy_dt = getattr(r, 'buy_limit_date', '') if not paid else ''
+                buy_tm = getattr(r, 'buy_limit_time', '') if not paid else ''
+                return {
                     'type': 'KTX',
-                    'rsv_id': getattr(r, 'rsv_id', ''),
+                    'rsv_id': getattr(r, 'rsv_id', '') or getattr(r, 'sale_info1', ''),
                     'train_name': f"{getattr(r, 'train_type_name', 'KTX')} {getattr(r, 'train_no', '')}".strip(),
                     'dep_name': getattr(r, 'dep_name', ''),
                     'arr_name': getattr(r, 'arr_name', ''),
@@ -343,9 +349,23 @@ def handle_fetch_tickets(task_id, task_data):
                     'arr_time': arr_t,
                     'price': getattr(r, 'price', 0),
                     'seat_count': getattr(r, 'seat_no_count', 1),
+                    'seat_info': seat_info,
                     'buy_limit': f"{buy_dt} {buy_tm}".strip() if buy_dt else '',
-                    'paid': not bool(buy_dt),
-                })
+                    'paid': paid,
+                }
+
+            # 결제 완료 승차권
+            issued = korail.tickets()
+            log(f"KTX tickets (issued) count: {len(issued)}")
+            for t in issued:
+                ktx_tickets.append(_ktx_item(t, paid=True))
+
+            # 미결제 예약
+            pending = korail.reservations()
+            log(f"KTX reservations (pending) count: {len(pending)}")
+            for r in pending:
+                ktx_tickets.append(_ktx_item(r, paid=False))
+
         except Exception as e:
             errors.append(f"KTX: {str(e)[:80]}")
             log(f"KTX ticket error: {e}")
