@@ -26,6 +26,40 @@ const SRT_STATIONS = [
 
 type TrainType = 'KTX' | 'SRT';
 
+function TicketCard({ ticket, color }: { ticket: any; color: string }) {
+  const depTime = (ticket.dep_time || '').substring(0, 4).replace(/(\d{2})(\d{2})/, '$1:$2');
+  const arrTime = (ticket.arr_time || '').substring(0, 4).replace(/(\d{2})(\d{2})/, '$1:$2');
+  const depDate = ticket.dep_date ? `${ticket.dep_date.substring(4, 6)}/${ticket.dep_date.substring(6, 8)}` : '';
+  return (
+    <div className="bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold tracking-widest text-foreground/30 uppercase">{ticket.train_name}</span>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white`}
+          style={{ backgroundColor: ticket.paid ? '#16a34a' : '#d97706' }}>
+          {ticket.paid ? '결제완료' : '미결제'}
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="text-center">
+          <p className="text-2xl font-light tracking-tight">{depTime}</p>
+          <p className="text-xs text-foreground/40 mt-0.5">{ticket.dep_name}</p>
+        </div>
+        <div className="flex-1 flex flex-col items-center gap-1">
+          <div className="w-full h-px" style={{ backgroundColor: color + '40' }} />
+          <p className="text-[9px] text-foreground/20 font-bold tracking-widest">{depDate}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-light tracking-tight text-foreground/50">{arrTime}</p>
+          <p className="text-xs text-foreground/40 mt-0.5">{ticket.arr_name}</p>
+        </div>
+      </div>
+      {ticket.seat_info && <p className="text-xs text-foreground/40">좌석: {ticket.seat_info}</p>}
+      {!ticket.paid && ticket.buy_limit && <p className="text-[10px] text-amber-600">결제기한: {ticket.buy_limit}</p>}
+      {ticket.price > 0 && <p className="text-sm font-medium text-right">{ticket.price.toLocaleString()}원</p>}
+    </div>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
 
@@ -56,6 +90,10 @@ export default function Home() {
 
   // Tasks from Firestore
   const [tasks, setTasks] = useState<any>({});
+
+  // Tickets
+  const [tickets, setTickets] = useState<{ ktx: any[]; srt: any[] } | null>(null);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
 
   const { ref: heroRef, isVisible: heroVisible } = useReveal(0.1);
 
@@ -157,6 +195,35 @@ export default function Home() {
       });
       setMessage('⏳ 10초 뒤에 알림이 발송됩니다...');
     } catch (e) { setMessage('❌ 요청 실패'); }
+  };
+
+  const fetchTickets = async () => {
+    if (!user) return;
+    setTicketsLoading(true);
+    setTickets(null);
+    try {
+      const reqRef = await addDoc(collection(db, 'ticket_requests'), {
+        uid: user.uid, createdAt: new Date(), status: 'PENDING',
+      });
+      const unsubscribe = onSnapshot(doc(db, 'ticket_requests', reqRef.id), (snap) => {
+        const data = snap.data();
+        if (data?.status === 'COMPLETED') {
+          setTickets({ ktx: data.ktx || [], srt: data.srt || [] });
+          setTicketsLoading(false);
+          unsubscribe();
+        } else if (data?.status === 'ERROR') {
+          setMessage(`❌ ${data.error || '승차권 조회 실패'}`);
+          setTicketsLoading(false);
+          unsubscribe();
+        }
+      });
+      setTimeout(() => {
+        setTicketsLoading((cur) => { if (cur) { setMessage('⚠️ 승차권 조회가 지연되고 있습니다...'); setTicketsLoading(false); } return cur; });
+      }, 20000);
+    } catch {
+      setMessage('⚠️ 승차권 조회 요청 실패');
+      setTicketsLoading(false);
+    }
   };
 
   const handleSwap = () => {
@@ -350,8 +417,8 @@ export default function Home() {
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-foreground/5">
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-center h-20 md:h-24">
           <div className="flex gap-2 bg-foreground/5 p-1.5 rounded-full w-full max-w-md">
-            {[{ id: 'search', label: '열차 조회' }, { id: 'manage', label: `매크로 관리` }, { id: 'settings', label: '설정' }].map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            {[{ id: 'search', label: '열차 조회' }, { id: 'tickets', label: '내 승차권' }, { id: 'manage', label: `매크로 관리` }, { id: 'settings', label: '설정' }].map((tab) => (
+              <button key={tab.id} onClick={() => { setActiveTab(tab.id); if (tab.id === 'tickets' && !tickets && !ticketsLoading) fetchTickets(); }}
                 className={`flex-1 py-3 md:py-4 rounded-full text-xs md:text-sm font-bold transition-all ${activeTab === tab.id ? 'bg-background text-foreground shadow-md' : 'text-foreground/40 hover:text-foreground'}`}>
                 {tab.id === 'manage' ? `${tab.label} (${Object.values(tasks).filter((t: any) => t.is_running).length})` : tab.label}
               </button>
@@ -441,6 +508,60 @@ export default function Home() {
               ))}
               {trains.length === 0 && !loading && <div className="col-span-full py-20 text-center text-foreground/20 font-light italic">조회된 열차가 없습니다.</div>}
             </div>
+          </div>
+
+        ) : activeTab === 'tickets' ? (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex items-end justify-between border-b border-foreground/10 pb-8">
+              <div>
+                <h2 className="text-3xl md:text-5xl font-light tracking-tighter">내 승차권</h2>
+                <p className="text-sm md:text-base text-foreground/40 font-light mt-2">KTX · SRT 예약 현황</p>
+              </div>
+              <button onClick={fetchTickets} disabled={ticketsLoading}
+                className="px-5 py-2.5 rounded-full bg-foreground/5 hover:bg-foreground/10 text-xs font-bold tracking-widest uppercase transition-all disabled:opacity-40">
+                {ticketsLoading ? '조회 중...' : '새로고침'}
+              </button>
+            </div>
+
+            {ticketsLoading && (
+              <div className="text-center py-20 text-foreground/30 font-light animate-pulse">승차권 조회 중...</div>
+            )}
+
+            {tickets && (
+              <>
+                {/* KTX */}
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: '#005BAC' }}>KTX</span>
+                    <span className="text-xs text-foreground/30 font-bold tracking-widest uppercase">{tickets.ktx.length}건</span>
+                  </div>
+                  {tickets.ktx.length === 0
+                    ? <p className="text-foreground/20 text-sm font-light italic pl-2">예약된 KTX 승차권이 없습니다.</p>
+                    : <div className="grid gap-3 md:grid-cols-2">
+                        {tickets.ktx.map((t, i) => <TicketCard key={i} ticket={t} color="#005BAC" />)}
+                      </div>
+                  }
+                </div>
+
+                {/* SRT */}
+                <div className="pt-6 border-t border-foreground/5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: '#651E38' }}>SRT</span>
+                    <span className="text-xs text-foreground/30 font-bold tracking-widest uppercase">{tickets.srt.length}건</span>
+                  </div>
+                  {tickets.srt.length === 0
+                    ? <p className="text-foreground/20 text-sm font-light italic pl-2">예약된 SRT 승차권이 없습니다.</p>
+                    : <div className="grid gap-3 md:grid-cols-2">
+                        {tickets.srt.map((t, i) => <TicketCard key={i} ticket={t} color="#651E38" />)}
+                      </div>
+                  }
+                </div>
+              </>
+            )}
+
+            {!tickets && !ticketsLoading && (
+              <div className="text-center py-20 text-foreground/20 font-light italic">승차권을 불러오려면 탭을 클릭하세요.</div>
+            )}
           </div>
 
         ) : activeTab === 'manage' ? (
