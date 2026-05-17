@@ -159,6 +159,12 @@ export default function Home() {
     } catch (e) { setMessage('❌ 요청 실패'); }
   };
 
+  const handleSwap = () => {
+    const tmp = dep;
+    setDep(arr);
+    setArr(tmp);
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -277,7 +283,8 @@ export default function Home() {
       {/* Station Picker */}
       <Modal isOpen={!!showStationPicker} onClose={() => setShowStationPicker(null)} title={showStationPicker === 'dep' ? '출발역' : '도착역'}>
         <div className="mb-4 flex gap-2 justify-center">
-          <span className={`px-3 py-1 rounded-full text-xs font-bold ${trainType === 'KTX' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+          <span className="px-3 py-1 rounded-full text-xs font-bold text-white"
+            style={{ backgroundColor: trainType === 'KTX' ? '#005BAC' : '#C7197D' }}>
             {trainType} 역 목록
           </span>
         </div>
@@ -367,10 +374,9 @@ export default function Home() {
                 <div className="flex gap-2 bg-foreground/5 p-1 rounded-2xl">
                   {(['KTX', 'SRT'] as TrainType[]).map((type) => (
                     <button key={type} type="button" onClick={() => handleTrainTypeChange(type)}
-                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${trainType === type
-                        ? type === 'KTX' ? 'bg-blue-600 text-white shadow-md' : 'bg-orange-500 text-white shadow-md'
-                        : 'text-foreground/40 hover:text-foreground'}`}>
-                      {type === 'KTX' ? '🚄 KTX' : '🚅 SRT'}
+                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${trainType === type ? 'text-white shadow-md' : 'text-foreground/40 hover:text-foreground'}`}
+                      style={trainType === type ? { backgroundColor: type === 'KTX' ? '#005BAC' : '#C7197D' } : {}}>
+                      {type}
                     </button>
                   ))}
                 </div>
@@ -379,13 +385,17 @@ export default function Home() {
                   <div className="flex-1 flex flex-col items-center">
                     <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest mb-2">출발</label>
                     <button type="button" onClick={() => setShowStationPicker('dep')}
-                      className={`text-2xl md:text-4xl font-bold transition-colors ${trainType === 'KTX' ? 'hover:text-blue-600' : 'hover:text-orange-500'}`}>{dep}</button>
+                      className={`text-2xl md:text-4xl font-bold transition-colors ${trainType === 'KTX' ? 'hover:text-[#005BAC]' : 'hover:text-[#C7197D]'}`}>{dep}</button>
                   </div>
-                  <div className="pt-6"><span className="text-foreground/10 text-3xl font-light">→</span></div>
+                  <div className="pt-6 flex flex-col items-center gap-1">
+                    <button type="button" onClick={handleSwap}
+                      className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center hover:bg-foreground/10 transition-all text-base text-foreground/40 hover:text-foreground"
+                      aria-label="출발/도착 전환">⇄</button>
+                  </div>
                   <div className="flex-1 flex flex-col items-center">
                     <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest mb-2">도착</label>
                     <button type="button" onClick={() => setShowStationPicker('arr')}
-                      className={`text-2xl md:text-4xl font-bold transition-colors ${trainType === 'KTX' ? 'hover:text-blue-600' : 'hover:text-orange-500'}`}>{arr}</button>
+                      className={`text-2xl md:text-4xl font-bold transition-colors ${trainType === 'KTX' ? 'hover:text-[#005BAC]' : 'hover:text-[#C7197D]'}`}>{arr}</button>
                   </div>
                 </div>
 
@@ -401,7 +411,7 @@ export default function Home() {
                 </div>
 
                 <MagneticButton type="submit" disabled={loading}
-                  className={`w-full py-5 text-lg shadow-lg ${trainType === 'SRT' ? 'bg-orange-500 hover:bg-orange-600' : ''}`}>
+                  className={`w-full py-5 text-lg shadow-lg ${trainType === 'SRT' ? 'bg-[#C7197D] hover:bg-[#A8146A]' : 'bg-[#005BAC] hover:bg-[#004A8F]'}`}>
                   {loading ? '조회 중...' : `${trainType} 열차 조회`}
                 </MagneticButton>
               </form>
@@ -411,7 +421,8 @@ export default function Home() {
               {trains.map((train, i) => (
                 <div key={i} className="group bg-foreground/[0.02] border border-foreground/5 rounded-[2rem] p-6 md:p-8 transition-all hover:bg-foreground/[0.04]">
                   <div className="flex justify-between items-start mb-6">
-                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase ${trainType === 'SRT' ? 'bg-orange-50 text-orange-500' : 'bg-blue-50 text-blue-500'}`}>
+                    <div className="px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase text-white"
+                      style={{ backgroundColor: trainType === 'KTX' ? '#005BAC' : '#C7197D' }}>
                       {train.train_name}
                     </div>
                     <div className={`text-xs font-bold ${train.reserve_possible ? 'text-green-600' : 'text-foreground/20'}`}>{train.general_seat}</div>
@@ -453,7 +464,8 @@ export default function Home() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase">{task.status}</span>
                             {task.trainType && (
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${task.trainType === 'SRT' ? 'bg-orange-100 text-orange-500' : 'bg-blue-100 text-blue-500'}`}>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white"
+                              style={{ backgroundColor: task.trainType === 'KTX' ? '#005BAC' : '#C7197D' }}>
                                 {task.trainType}
                               </span>
                             )}
@@ -492,7 +504,7 @@ export default function Home() {
                 {/* KTX Account */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 ml-2">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-600">KTX</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: '#005BAC' }}>KTX</span>
                     <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase">코레일 계정</label>
                   </div>
                   <input type="text" value={korailId} onChange={e => setKorailId(e.target.value)}
@@ -504,7 +516,7 @@ export default function Home() {
                 {/* SRT Account */}
                 <div className="space-y-4 pt-8 border-t border-foreground/5">
                   <div className="flex items-center gap-2 ml-2">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-500">SRT</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: '#C7197D' }}>SRT</span>
                     <label className="text-[10px] font-bold tracking-widest text-foreground/30 uppercase">SRT 계정</label>
                   </div>
                   <input type="text" value={srtId} onChange={e => setSrtId(e.target.value)}
