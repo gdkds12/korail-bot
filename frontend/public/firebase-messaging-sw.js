@@ -21,8 +21,8 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.data?.title || "코레일 봇 알림";
   const notificationOptions = {
     body: payload.data?.body || "",
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-192x192.png',
+    icon: '/icons/icon-192x192-v2.png',
+    badge: '/icons/icon-192x192-v2.png',
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
