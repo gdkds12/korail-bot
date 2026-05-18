@@ -292,7 +292,7 @@ def on_tasks_snapshot(col_snapshot, changes, read_time):
                 threading.Thread(target=handle_fetch_tickets, args=(task_id, data), daemon=True).start()
                 continue
 
-            if is_running and status == 'RUNNING':
+            if is_running and status == 'RUNNING' and task_type not in ('TEST_NOTIFICATION', 'FETCH_TICKETS'):
                 if task_id not in active_tasks:
                     stop_event = threading.Event()
                     t = threading.Thread(target=run_reservation_task, args=(task_id, data, stop_event))
@@ -324,6 +324,16 @@ def handle_fetch_tickets(task_id, task_data):
 
     ktx_tickets, srt_tickets, errors = [], [], []
 
+    # 승차권 조회는 IP 차단 위험이 없으므로 프록시 없이 직접 연결
+    proxy_vars = {k: os.environ.pop(k, None) for k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy')}
+    try:
+        _do_fetch_tickets(task_id, user_data, ktx_tickets, srt_tickets, errors)
+    finally:
+        for k, v in proxy_vars.items():
+            if v is not None:
+                os.environ[k] = v
+
+def _do_fetch_tickets(task_id, user_data, ktx_tickets, srt_tickets, errors):
     log(f"Ticket fetch - korailId set: {bool(user_data.get('korailId'))}, srtId set: {bool(user_data.get('srtId'))}")
     if user_data.get('korailId') and user_data.get('korailPw'):
         try:
